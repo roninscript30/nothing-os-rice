@@ -90,6 +90,11 @@ ShellRoot {
         onPressed: overview.toggle()
     }
     Shortcut {
+        name: "cycle_windows"
+        description: "Cycle open windows (Super+Tab)"
+        onPressed: overview.cycleNext()
+    }
+    Shortcut {
         name: "launcher"
         description: "Application launcher (Super+D)"
         onPressed: Quickshell.execDetached(["/home/marudhu/.config/rofi/scripts/nothing-launcher.sh"])

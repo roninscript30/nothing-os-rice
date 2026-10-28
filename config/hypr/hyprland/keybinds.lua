@@ -2,8 +2,10 @@ local vars = require("variables")
 local fn   = require("hyprland.functions")
 
 -- Shell globals: shell:<name> - registered by the active shell (demonshot, glyph)
--- Single Super tap toggles runtime application overview (floats & arranges running apps)
-hl.bind("SUPER + SUPER_L", hl.dsp.exec_cmd("/home/marudhu/REPOS/nothing-os-rice/config/hypr/scripts/app_overview.py"), { release = true })
+-- Single Super tap opens the running windows overview
+hl.bind("SUPER + SUPER_L", hl.dsp.global("shell:windows"), { release = true })
+-- Super + Tab cycles open windows
+hl.bind("SUPER + Tab", hl.dsp.global("shell:cycle_windows"))
 
 
 -- App Launcher: Super + D
