@@ -19,7 +19,7 @@ def clean_previews():
         except Exception:
             pass
 
-def collect():
+def collect(metrics_only=False):
     try:
         clients_raw = subprocess.check_output(["hyprctl", "-j", "clients"], stderr=subprocess.DEVNULL)
         clients = json.loads(clients_raw)
@@ -85,13 +85,13 @@ def collect():
         at = c.get("at", [0, 0])
         size = c.get("size", [0, 0])
 
-        # Capture thumbnail for visible window on current workspace if not captured yet
-        if ws == active_ws and c.get("mapped") and size[0] > 10 and size[1] > 10:
+        # Only capture thumbnail if not in metrics_only mode and thumbnail doesn't exist yet
+        if not metrics_only and ws == active_ws and c.get("mapped") and size[0] > 10 and size[1] > 10:
             if not os.path.exists(preview_file):
                 try:
                     subprocess.run(
                         ["grim", "-s", "0.25", "-t", "png", "-l", "1", "-g", f"{at[0]},{at[1]} {size[0]}x{size[1]}", preview_file],
-                        timeout=0.25,
+                        timeout=0.3,
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL
                     )
@@ -114,7 +114,8 @@ def main():
         print(json.dumps({"cleaned": True}))
         return
 
-    data = collect()
+    metrics_only = (len(sys.argv) > 1 and sys.argv[1] == "--metrics-only")
+    data = collect(metrics_only=metrics_only)
     print(json.dumps(data))
 
 if __name__ == "__main__":

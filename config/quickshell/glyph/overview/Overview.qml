@@ -41,7 +41,7 @@ PanelWindow {
     function close() {
         open = false;
         searchQuery = "";
-        cleanProc.exec(["python3", "/home/marudhu/REPOS/nothing-os-rice/config/quickshell/glyph/overview/overview_stats.py", "--clean"]);
+        Quickshell.execDetached(["python3", "/home/marudhu/REPOS/nothing-os-rice/config/quickshell/glyph/overview/overview_stats.py", "--clean"]);
     }
 
     function cycleNext() {
@@ -65,6 +65,7 @@ PanelWindow {
     // Stats collector process
     Process {
         id: statsProc
+        command: ["python3", "/home/marudhu/REPOS/nothing-os-rice/config/quickshell/glyph/overview/overview_stats.py"]
         stdout: StdioCollector {
             onStreamFinished: {
                 if (!text) return;
@@ -75,20 +76,19 @@ PanelWindow {
         }
     }
 
-    Process { id: cleanProc }
-
-    // Periodic stats collection when overview is open
+    // Periodic stats collection when overview is open (metrics only, lightweight)
     Timer {
         id: statsTimer
         interval: 3000
         running: root.open
         repeat: true
-        onTriggered: root.refreshStats()
+        onTriggered: root.refreshStats(true)
     }
 
-    function refreshStats() {
-        if (!root.open) return;
-        statsProc.exec(["python3", "/home/marudhu/REPOS/nothing-os-rice/config/quickshell/glyph/overview/overview_stats.py"]);
+    function refreshStats(metricsOnly) {
+        if (!root.open || statsProc.running) return;
+        const arg = metricsOnly ? "--metrics-only" : "--stats";
+        statsProc.exec(["python3", "/home/marudhu/REPOS/nothing-os-rice/config/quickshell/glyph/overview/overview_stats.py", arg]);
     }
 
     function resolveIcon(icon) {
@@ -212,24 +212,26 @@ PanelWindow {
 
     // Dynamic Sizing based on window count and screen geometry
     readonly property int winCount: filteredWindows.length
-    readonly property real availableStageW: root.width - 80
-    readonly property real availableStageH: root.height - 240
+    readonly property real availableStageW: Math.max(400, root.width - 80)
+    readonly property real availableStageH: Math.max(300, root.height - 240)
 
     readonly property real cardW: {
-        if (winCount <= 1) return Math.min(760, availableStageW);
-        if (winCount === 2) return Math.min(540, (availableStageW - 28) / 2);
-        if (winCount === 3) return Math.min(440, (availableStageW - 56) / 3);
-        if (winCount === 4) return Math.min(460, (availableStageW - 28) / 2);
-        if (winCount <= 6) return Math.min(380, (availableStageW - 56) / 3);
-        return Math.min(350, (availableStageW - 84) / 4);
+        const w = availableStageW;
+        if (winCount <= 1) return Math.max(320, Math.min(760, w));
+        if (winCount === 2) return Math.max(280, Math.min(540, (w - 28) / 2));
+        if (winCount === 3) return Math.max(260, Math.min(440, (w - 56) / 3));
+        if (winCount === 4) return Math.max(260, Math.min(460, (w - 28) / 2));
+        if (winCount <= 6) return Math.max(240, Math.min(380, (w - 56) / 3));
+        return Math.max(220, Math.min(350, (w - 84) / 4));
     }
 
     readonly property real cardH: {
-        if (winCount <= 1) return Math.min(480, availableStageH);
-        if (winCount === 2) return Math.min(380, availableStageH);
-        if (winCount === 3) return Math.min(320, availableStageH);
-        if (winCount === 4) return Math.min(290, (availableStageH - 24) / 2);
-        if (winCount <= 6) return Math.min(250, (availableStageH - 24) / 2);
+        const h = availableStageH;
+        if (winCount <= 1) return Math.max(240, Math.min(480, h));
+        if (winCount === 2) return Math.max(220, Math.min(380, h));
+        if (winCount === 3) return Math.max(200, Math.min(320, h));
+        if (winCount === 4) return Math.max(180, Math.min(290, (h - 24) / 2));
+        if (winCount <= 6) return Math.max(160, Math.min(250, (h - 24) / 2));
         return 220;
     }
 
@@ -870,7 +872,7 @@ PanelWindow {
                                 // --- Actual Window Content Preview Canvas ---
                                 Rectangle {
                                     width: parent.width
-                                    height: parent.height - 50
+                                    height: Math.max(80, parent.height - 50)
                                     radius: 12
                                     color: "#080808"
                                     border { width: 1; color: "#1c1c1c" }
