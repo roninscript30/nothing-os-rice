@@ -7,20 +7,19 @@ import Quickshell.Wayland
 import qs
 import qs.components
 
-// Nothing OS Enhanced Application & Workspace Overview
-// Provides real window previews, live CPU/RAM metrics, workspace management,
-// integrated app launcher, and full keyboard-first navigation.
+// Nothing OS Zoomed-Out Overview
+// Replicates the reference UI: Centered header, search, workspace filter pills,
+// dynamic window preview grid, real-time CPU/RAM metrics, and minimal keyboard cheatsheet.
 PanelWindow {
     id: root
 
     property bool open: false
     property string searchQuery: ""
-    // Default to the current working workspace (not ALL)
-    property int selectedWorkspaceId: currentWsId
-    property int selectedWsIndex: currentWsId
-    property int activeSection: 2 // 0: Search, 1: Workspaces, 2: Windows, 3: Launcher
+    // Default to ALL (0) on every overview launch
+    property int selectedWorkspaceId: 0
+    property int selectedWsIndex: 0
+    property int activeSection: 2 // 0: Search, 1: Workspaces, 2: Windows
     property int selectedWinIndex: 0
-    property int selectedAppIndex: 0
     property var windowStats: ({})
 
     function toggle() {
@@ -30,22 +29,13 @@ PanelWindow {
 
     function openOverview() {
         searchQuery = "";
-        const ws = currentWsId;
-        selectedWorkspaceId = ws;
-        selectedWsIndex = ws;
+        // Default to ALL (0) showing windows across every workspace
+        selectedWorkspaceId = 0;
+        selectedWsIndex = 0;
         selectedWinIndex = 0;
-        selectedAppIndex = 0;
         activeSection = 2; // Default to windows section
         open = true;
         refreshStats();
-    }
-
-    onOpenChanged: {
-        if (open) {
-            const ws = currentWsId;
-            selectedWorkspaceId = ws;
-            selectedWsIndex = ws;
-        }
     }
 
     function close() {
@@ -72,20 +62,7 @@ PanelWindow {
     WlrLayershell.keyboardFocus: open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     WlrLayershell.namespace: "glyph-overview"
 
-    // Periodic stats collection when overview is open (every 3 seconds)
-    Timer {
-        id: statsTimer
-        interval: 3000
-        running: root.open
-        repeat: true
-        onTriggered: root.refreshStats()
-    }
-
-    function refreshStats() {
-        if (!root.open) return;
-        statsProc.exec(["python3", "/home/marudhu/REPOS/nothing-os-rice/config/quickshell/glyph/overview/overview_stats.py"]);
-    }
-
+    // Stats collector process
     Process {
         id: statsProc
         stdout: StdioCollector {
@@ -100,6 +77,20 @@ PanelWindow {
 
     Process { id: cleanProc }
 
+    // Periodic stats collection when overview is open
+    Timer {
+        id: statsTimer
+        interval: 3000
+        running: root.open
+        repeat: true
+        onTriggered: root.refreshStats()
+    }
+
+    function refreshStats() {
+        if (!root.open) return;
+        statsProc.exec(["python3", "/home/marudhu/REPOS/nothing-os-rice/config/quickshell/glyph/overview/overview_stats.py"]);
+    }
+
     function resolveIcon(icon) {
         if (!icon) return "";
         if (icon.startsWith("/") || icon.startsWith("file://")) return icon;
@@ -108,7 +99,7 @@ PanelWindow {
 
     readonly property var glyphMap: [
         ["zen", "\u{F0239}"], ["firefox", "\u{F0239}"], ["chrom", "\u{F059F}"], ["edge", "\u{F0239}"],
-        ["kitty", "\u{F018D}"], ["foot", "\u{F018D}"], ["terminal", "\u{F018D}"],
+        ["kitty", "\u{F018D}"], ["terminal", "\u{F018D}"], ["foot", "\u{F018D}"],
         ["spotify", "\u{F04C7}"], ["telegram", "\u{F2C6}"], ["codium", "\u{F0A1E}"], ["code", "\u{F0A1E}"],
         ["antigravity", "\u{F0A1E}"], ["loaf", "\u{F024B}"], ["files", "\u{F024B}"], ["thunar", "\u{F024B}"],
         ["nautilus", "\u{F024B}"], ["chatgpt", "\u{F059F}"], ["discord", "\u{F066F}"], ["vesktop", "\u{F066F}"],
@@ -143,7 +134,7 @@ PanelWindow {
         return list;
     }
 
-    // All running toplevel windows
+    // Extract running toplevel windows from Hyprland
     readonly property var allWindows: !open ? [] : Hyprland.toplevels.values.map(t => {
         const ipc = t.lastIpcObject || {};
         const cls = ipc.class ?? "";
@@ -160,8 +151,17 @@ PanelWindow {
         const statusStr = st.status || (ipc.floating ? "Floating" : "Tiled");
         const previewPath = st.preview || "";
 
+        // Nicely formatted display name
+        let displayName = cls;
+        if (cls.toLowerCase() === "microsoft-edge") displayName = "Microsoft Edge";
+        else if (cls.toLowerCase() === "code" || cls.toLowerCase() === "codium") displayName = "Visual Studio Code";
+        else if (cls.toLowerCase() === "kitty") displayName = "Terminal";
+        else if (cls) displayName = cls.charAt(0).toUpperCase() + cls.slice(1);
+        else displayName = "Application";
+
         return {
             title: t.title || cls || "Window",
+            appName: displayName,
             appClass: cls || "Application",
             workspaceId: wsId,
             workspaceName: wsName,
@@ -180,6 +180,12 @@ PanelWindow {
                 Hyprland.dispatch(`hl.dsp.window.close({ window = "address:${t.address}" })`);
                 root.refreshStats();
             },
+            toggleFullscreen: () => {
+                Hyprland.dispatch(`hl.dsp.window.fullscreen({ mode = "fullscreen", window = "address:${t.address}" })`);
+            },
+            minimizeWin: () => {
+                Hyprland.dispatch(`hl.dsp.window.move({ workspace = "special:minimized", window = "address:${t.address}" })`);
+            },
             moveToWs: (targetWs) => {
                 Hyprland.dispatch(`hl.dsp.window.move({ workspace = ${targetWs}, window = "address:${t.address}" })`);
                 root.refreshStats();
@@ -187,83 +193,52 @@ PanelWindow {
         };
     })
 
-    // Filtered windows based on workspace filter and search query
+    // Filtered windows based on selected workspace and search query
     readonly property var filteredWindows: {
         const q = searchQuery.trim().toLowerCase();
         return allWindows.filter(w => {
-            // Workspace filter (0 means ALL workspaces)
+            // Workspace filter: 0 means ALL workspaces
             if (selectedWorkspaceId > 0 && w.workspaceId !== selectedWorkspaceId) {
                 return false;
             }
             // Search query filter
             if (q) {
-                const haystack = (w.title + " " + w.appClass + " " + w.workspaceName).toLowerCase();
+                const haystack = (w.title + " " + w.appName + " " + w.appClass + " " + w.workspaceName).toLowerCase();
                 return haystack.includes(q);
             }
             return true;
         });
     }
 
-    // Installed desktop applications for launcher
-    readonly property var installedApps: !open ? [] : DesktopEntries.applications.values
-        .filter(e => !e.noDisplay && e.name)
-        .map(e => {
-            const iconPath = root.resolveIcon(e.icon);
-            const isRunning = allWindows.some(w => {
-                const cls = (w.appClass || "").toLowerCase();
-                const id = (e.id || "").toLowerCase();
-                const name = (e.name || "").toLowerCase();
-                return id.includes(cls) || cls.includes(id) || name.includes(cls) || cls.includes(name);
-            });
-            return {
-                id: e.id,
-                name: e.name,
-                genericName: e.genericName || "",
-                iconPath: iconPath,
-                glyphChar: root.getGlyph(e.id + " " + e.name),
-                isRunning: isRunning,
-                execute: () => {
-                    try {
-                        if (typeof e.execute === "function") {
-                            e.execute();
-                        } else {
-                            Quickshell.execDetached(["sh", "-c", e.execString || e.id]);
-                        }
-                    } catch (err) {
-                        Quickshell.execDetached(["sh", "-c", e.execString || e.id]);
-                    }
-                    root.close();
-                }
-            };
-        })
-        .filter(app => {
-            if (!searchQuery) return true;
-            const q = searchQuery.trim().toLowerCase();
-            return (app.name + " " + app.genericName + " " + app.id).toLowerCase().includes(q);
-        })
-        .sort((a, b) => (b.isRunning - a.isRunning) || a.name.localeCompare(b.name))
-
-    // Dynamic sizing based on window count
+    // Dynamic Sizing based on window count and screen geometry
     readonly property int winCount: filteredWindows.length
+    readonly property real availableStageW: root.width - 80
+    readonly property real availableStageH: root.height - 240
+
     readonly property real cardW: {
-        if (winCount <= 1) return 560;
-        if (winCount === 2) return 460;
-        if (winCount <= 4) return 380;
-        return 330;
-    }
-    readonly property real cardH: {
-        if (winCount <= 1) return 340;
-        if (winCount === 2) return 280;
-        if (winCount <= 4) return 240;
-        return 210;
+        if (winCount <= 1) return Math.min(760, availableStageW);
+        if (winCount === 2) return Math.min(540, (availableStageW - 28) / 2);
+        if (winCount === 3) return Math.min(440, (availableStageW - 56) / 3);
+        if (winCount === 4) return Math.min(460, (availableStageW - 28) / 2);
+        if (winCount <= 6) return Math.min(380, (availableStageW - 56) / 3);
+        return Math.min(350, (availableStageW - 84) / 4);
     }
 
-    // Dimmed background with click-to-exit
+    readonly property real cardH: {
+        if (winCount <= 1) return Math.min(480, availableStageH);
+        if (winCount === 2) return Math.min(380, availableStageH);
+        if (winCount === 3) return Math.min(320, availableStageH);
+        if (winCount === 4) return Math.min(290, (availableStageH - 24) / 2);
+        if (winCount <= 6) return Math.min(250, (availableStageH - 24) / 2);
+        return 220;
+    }
+
+    // Dimmed background with click-outside to exit
     Rectangle {
         anchors.fill: parent
         color: "#000000"
-        opacity: root.open ? 0.88 : 0
-        Behavior on opacity { NumberAnimation { duration: 200 } }
+        opacity: root.open ? 0.90 : 0
+        Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
 
         MouseArea {
             anchors.fill: parent
@@ -271,7 +246,7 @@ PanelWindow {
         }
     }
 
-    // Container item receiving focus and keyboard events
+    // Main Interactive Overlay
     Item {
         anchors.fill: parent
         focus: true
@@ -284,19 +259,19 @@ PanelWindow {
                 return;
             }
 
-            // Tab / Shift+Tab cycles activeSection
+            // Tab / Shift+Tab cycles activeSection (Search -> Workspaces -> Windows)
             if (e.key === Qt.Key_Tab || e.key === Qt.Key_Backtab) {
                 if (e.modifiers & Qt.ShiftModifier || e.key === Qt.Key_Backtab) {
-                    root.activeSection = (root.activeSection + 3) % 4;
+                    root.activeSection = (root.activeSection + 2) % 3;
                 } else {
-                    root.activeSection = (root.activeSection + 1) % 4;
+                    root.activeSection = (root.activeSection + 1) % 3;
                 }
                 if (root.activeSection === 0) searchInput.forceActiveFocus();
                 e.accepted = true;
                 return;
             }
 
-            // 0 key: Switch to ALL workspaces view
+            // 0 Key: Switch to ALL workspaces view
             if (e.key === Qt.Key_0) {
                 root.selectedWorkspaceId = 0;
                 root.selectedWsIndex = 0;
@@ -313,9 +288,8 @@ PanelWindow {
                         root.filteredWindows[root.selectedWinIndex].moveToWs(wsNum);
                     }
                 } else {
-                    // Switch to workspace
-                    Hyprland.dispatch(`hl.dsp.focus({ workspace = ${wsNum} })`);
                     root.selectedWorkspaceId = wsNum;
+                    root.selectedWsIndex = wsNum;
                 }
                 e.accepted = true;
                 return;
@@ -377,9 +351,6 @@ PanelWindow {
                 } else if (e.key === Qt.Key_Up) {
                     root.activeSection = 1; // Move up to workspaces
                     e.accepted = true;
-                } else if (e.key === Qt.Key_Down) {
-                    root.activeSection = 3; // Move down to launcher
-                    e.accepted = true;
                 } else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
                     if (root.filteredWindows.length > 0 && root.selectedWinIndex < root.filteredWindows.length) {
                         root.filteredWindows[root.selectedWinIndex].focus();
@@ -393,87 +364,80 @@ PanelWindow {
                 }
                 return;
             }
-
-            // Navigation within Section 3 (Launcher)
-            if (root.activeSection === 3) {
-                if (e.key === Qt.Key_Left) {
-                    root.selectedAppIndex = Math.max(0, root.selectedAppIndex - 1);
-                    e.accepted = true;
-                } else if (e.key === Qt.Key_Right) {
-                    root.selectedAppIndex = Math.min(root.installedApps.length - 1, root.selectedAppIndex + 1);
-                    e.accepted = true;
-                } else if (e.key === Qt.Key_Up) {
-                    root.activeSection = 2; // Move up to windows
-                    e.accepted = true;
-                } else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
-                    if (root.installedApps.length > 0 && root.selectedAppIndex < root.installedApps.length) {
-                        root.installedApps[root.selectedAppIndex].execute();
-                    }
-                    e.accepted = true;
-                }
-                return;
-            }
         }
 
-        // --- TOP HEADER & SEARCH ---
+        // --- 1. TOP HEADER ---
         Column {
-            id: headerArea
+            id: topHeaderArea
             anchors {
                 top: parent.top
-                topMargin: 24
+                topMargin: 32
                 horizontalCenter: parent.horizontalCenter
             }
-            spacing: 12
-            z: 200
+            spacing: 14
+            z: 100
 
-            // Title & Dot Indicator
-            Row {
+            // Title Pill: [● NOTHING OS OVERVIEW  (3 WINDOWS)]
+            Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 10
+                width: titleRow.width + 24
+                height: 32
+                radius: 16
+                color: "#131313"
+                border { width: 1; color: "#222222" }
 
-                Rectangle {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 8
-                    height: 8
-                    radius: 4
-                    color: Theme.red
-                }
+                Row {
+                    id: titleRow
+                    anchors.centerIn: parent
+                    spacing: 10
 
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "NOTHING OS OVERVIEW"
-                    font { family: Theme.mono; pixelSize: 13; weight: Font.Bold; letterSpacing: 2 }
-                    color: Theme.fg
-                }
+                    // Red Dot Indicator
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 8
+                        height: 8
+                        radius: 4
+                        color: Theme.red
+                    }
 
-                Rectangle {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: winBadgeText.width + 14
-                    height: 20
-                    radius: 10
-                    color: Theme.s2
-                    border { width: 1; color: Theme.s3 }
-
+                    // Monospace uppercase title
                     Text {
-                        id: winBadgeText
-                        anchors.centerIn: parent
-                        text: `${root.allWindows.length} RUNNING`
-                        font { family: Theme.mono; pixelSize: 10; weight: Font.Bold }
-                        color: Theme.grey
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "NOTHING OS OVERVIEW"
+                        font { family: Theme.mono; pixelSize: 12; weight: Font.Bold; letterSpacing: 2 }
+                        color: Theme.fg
+                    }
+
+                    // Windows count sub-pill
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: countPillText.width + 14
+                        height: 20
+                        radius: 10
+                        color: "#1c1c1c"
+                        border { width: 1; color: "#282828" }
+
+                        Text {
+                            id: countPillText
+                            anchors.centerIn: parent
+                            text: `${root.allWindows.length} WINDOWS`
+                            font { family: Theme.mono; pixelSize: 9; weight: Font.Bold }
+                            color: Theme.grey
+                        }
                     }
                 }
             }
 
-            // Search Bar (Section 0)
+            // --- 2. SEARCH BAR ---
             Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: 460
-                height: 42
-                radius: 21
-                color: root.activeSection === 0 || searchInput.activeFocus ? "#1a1a1a" : "#121212"
+                width: 480
+                height: 44
+                radius: 22
+                color: root.activeSection === 0 || searchInput.activeFocus ? "#181818" : "#121212"
                 border {
                     width: root.activeSection === 0 || searchInput.activeFocus ? 2 : 1
-                    color: root.activeSection === 0 || searchInput.activeFocus ? "#ffffff" : "#262626"
+                    color: root.activeSection === 0 || searchInput.activeFocus ? "#ffffff" : "#242424"
                 }
                 Behavior on border.color { ColorAnimation { duration: 150 } }
 
@@ -500,7 +464,7 @@ PanelWindow {
                         Text {
                             anchors.fill: parent
                             visible: !searchInput.text && !searchInput.activeFocus
-                            text: "Type to search windows & applications..."
+                            text: "Search windows..."
                             color: Theme.grey
                             font { family: Theme.ui; pixelSize: 13 }
                         }
@@ -508,7 +472,6 @@ PanelWindow {
                         onTextChanged: {
                             root.searchQuery = text;
                             root.selectedWinIndex = 0;
-                            root.selectedAppIndex = 0;
                         }
                     }
 
@@ -540,21 +503,21 @@ PanelWindow {
                 }
             }
 
-            // --- WORKSPACE NAVIGATOR (Section 1) ---
+            // --- 3. WORKSPACE FILTER PILLS ---
             Row {
                 id: workspaceBar
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: 8
 
-                // ALL Workspaces Pill
+                // ALL (N) Pill (Selected by Default)
                 Rectangle {
-                    width: allWsLabel.width + 22
-                    height: 30
-                    radius: 15
-                    color: root.selectedWorkspaceId === 0 ? "#ffffff" : (root.activeSection === 1 && root.selectedWsIndex === 0 ? "#242424" : "#141414")
+                    width: allWsLabel.width + 24
+                    height: 32
+                    radius: 16
+                    color: root.selectedWorkspaceId === 0 ? "#ffffff" : (root.activeSection === 1 && root.selectedWsIndex === 0 ? "#222222" : "#141414")
                     border {
-                        width: root.activeSection === 1 && root.selectedWsIndex === 0 ? 2 : 1
-                        color: root.selectedWorkspaceId === 0 ? "#ffffff" : (root.activeSection === 1 && root.selectedWsIndex === 0 ? "#ffffff" : "#2a2a2a")
+                        width: root.selectedWorkspaceId === 0 || (root.activeSection === 1 && root.selectedWsIndex === 0) ? 2 : 1
+                        color: root.selectedWorkspaceId === 0 ? "#ffffff" : (root.activeSection === 1 && root.selectedWsIndex === 0 ? "#ffffff" : "#242424")
                     }
 
                     Text {
@@ -576,7 +539,7 @@ PanelWindow {
                     }
                 }
 
-                // Workspace Cards Repeater
+                // Workspace Pills: WS 1, WS 2 ●, WS 3, WS 4, WS 5
                 Repeater {
                     model: root.workspaceList
 
@@ -589,29 +552,19 @@ PanelWindow {
                         readonly property bool isFocusedByKeyboard: root.activeSection === 1 && root.selectedWsIndex === (index + 1)
                         readonly property bool isActiveInHyprland: modelData.active
 
-                        width: wsContent.width + 24
-                        height: 30
-                        radius: 15
-                        color: isSelected ? "#ffffff" : (isFocusedByKeyboard ? "#222222" : "#121212")
+                        width: wsPillContent.width + 24
+                        height: 32
+                        radius: 16
+                        color: isSelected ? "#ffffff" : (isFocusedByKeyboard ? "#222222" : "#141414")
                         border {
                             width: isSelected || isFocusedByKeyboard ? 2 : 1
-                            color: isSelected || isFocusedByKeyboard ? "#ffffff" : (modelData.occupied ? "#333333" : "#202020")
+                            color: isSelected || isFocusedByKeyboard ? "#ffffff" : "#242424"
                         }
 
                         Row {
-                            id: wsContent
+                            id: wsPillContent
                             anchors.centerIn: parent
                             spacing: 6
-
-                            // Red dot for active Hyprland workspace
-                            Rectangle {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 6
-                                height: 6
-                                radius: 3
-                                color: Theme.red
-                                visible: isActiveInHyprland
-                            }
 
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
@@ -620,21 +573,14 @@ PanelWindow {
                                 color: isSelected ? "#000000" : Theme.fg
                             }
 
-                            // Window count badge
+                            // Red dot indicator next to active Hyprland workspace (e.g. WS 2 ●)
                             Rectangle {
                                 anchors.verticalCenter: parent.verticalCenter
-                                width: wsCountText.width + 8
-                                height: 16
-                                radius: 8
-                                color: isSelected ? "#e0e0e0" : (modelData.occupied ? "#222222" : "#1a1a1a")
-
-                                Text {
-                                    id: wsCountText
-                                    anchors.centerIn: parent
-                                    text: modelData.occupied ? `${modelData.winCount}` : "·"
-                                    font { family: Theme.mono; pixelSize: 9; weight: Font.Bold }
-                                    color: isSelected ? "#000000" : (modelData.occupied ? Theme.grey : Theme.mute)
-                                }
+                                width: 6
+                                height: 6
+                                radius: 3
+                                color: Theme.red
+                                visible: isActiveInHyprland
                             }
                         }
 
@@ -645,8 +591,10 @@ PanelWindow {
                                 root.selectedWorkspaceId = modelData.id;
                                 root.selectedWsIndex = index + 1;
                                 root.activeSection = 1;
-                                // Click switches Hyprland workspace directly
+                            }
+                            onDoubleClicked: {
                                 Hyprland.dispatch(`hl.dsp.focus({ workspace = ${modelData.id} })`);
+                                root.close();
                             }
                         }
                     }
@@ -654,29 +602,29 @@ PanelWindow {
             }
         }
 
-        // --- SECTION 2: WINDOW PREVIEWS STAGE ---
+        // --- 4. SMART WINDOW PREVIEW GRID ---
         Item {
             id: windowStageArea
             anchors {
-                top: headerArea.bottom
-                topMargin: 20
-                bottom: launcherArea.top
-                bottomMargin: 16
+                top: topHeaderArea.bottom
+                topMargin: 28
+                bottom: cheatsheetBar.top
+                bottomMargin: 24
                 left: parent.left
                 leftMargin: 40
                 right: parent.right
                 rightMargin: 40
             }
 
-            // Empty Workspace Indicator
+            // Empty state if no windows in this workspace/search
             Rectangle {
                 anchors.centerIn: parent
                 visible: root.filteredWindows.length === 0
                 width: 440
-                height: 200
-                radius: 20
+                height: 180
+                radius: 18
                 color: "#121212"
-                border { width: 1; color: "#2a2a2a" }
+                border { width: 1; color: "#242424" }
 
                 Column {
                     anchors.centerIn: parent
@@ -685,48 +633,20 @@ PanelWindow {
                     Icon {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: "\u{F05CE}"
-                        font.pixelSize: 42
+                        font.pixelSize: 36
                         color: Theme.mute
                     }
 
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: root.selectedWorkspaceId > 0 ? `WORKSPACE ${root.selectedWorkspaceId} IS EMPTY` : "NO RUNNING APPLICATIONS"
-                        font { family: Theme.mono; pixelSize: 13; weight: Font.Bold; letterSpacing: 1 }
+                        text: root.selectedWorkspaceId > 0 ? `NO WINDOWS ON WORKSPACE ${root.selectedWorkspaceId}` : "NO MATCHING WINDOWS"
+                        font { family: Theme.mono; pixelSize: 12; weight: Font.Bold; letterSpacing: 1 }
                         color: Theme.grey
-                    }
-
-                    Rectangle {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        width: switchWsBtnText.width + 24
-                        height: 32
-                        radius: 16
-                        color: Theme.s2
-                        border { width: 1; color: Theme.s3 }
-
-                        Text {
-                            id: switchWsBtnText
-                            anchors.centerIn: parent
-                            text: root.selectedWorkspaceId > 0 ? `SWITCH TO WORKSPACE ${root.selectedWorkspaceId}` : "LAUNCH APPLICATION BELOW"
-                            font { family: Theme.mono; pixelSize: 11; weight: Font.Bold }
-                            color: Theme.fg
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if (root.selectedWorkspaceId > 0) {
-                                    Hyprland.dispatch(`hl.dsp.focus({ workspace = ${root.selectedWorkspaceId} })`);
-                                    root.close();
-                                }
-                            }
-                        }
                     }
                 }
             }
 
-            // Flickable Flow Grid of Window Previews
+            // Flow Grid of Window Preview Cards
             Flickable {
                 anchors.fill: parent
                 contentWidth: windowFlow.width
@@ -743,7 +663,8 @@ PanelWindow {
                     width: {
                         if (root.winCount === 1) return root.cardW;
                         if (root.winCount === 2) return root.cardW * 2 + 24;
-                        if (root.winCount <= 4) return root.cardW * 2 + 24;
+                        if (root.winCount === 3) return root.cardW * 3 + 48;
+                        if (root.winCount === 4) return root.cardW * 2 + 24;
                         return Math.min(parent.width, root.cardW * 3 + 48);
                     }
 
@@ -759,15 +680,15 @@ PanelWindow {
 
                             width: root.cardW
                             height: root.cardH
-                            radius: 16
-                            color: isSelectedByKeyboard || cardMouseArea.containsMouse ? "#181818" : "#101010"
+                            radius: 20
+                            color: isSelectedByKeyboard || cardMouseArea.containsMouse ? "#181818" : "#111111"
                             border {
                                 width: isSelectedByKeyboard || cardMouseArea.containsMouse ? 2 : 1
-                                color: isSelectedByKeyboard || cardMouseArea.containsMouse ? "#ffffff" : "#242424"
+                                color: isSelectedByKeyboard || cardMouseArea.containsMouse ? "#ffffff" : "#202020"
                             }
-                            scale: isSelectedByKeyboard || cardMouseArea.containsMouse ? 1.03 : 1.0
-                            Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
-                            Behavior on border.color { ColorAnimation { duration: 150 } }
+                            scale: isSelectedByKeyboard || cardMouseArea.containsMouse ? 1.02 : 1.0
+                            Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+                            Behavior on border.color { ColorAnimation { duration: 140 } }
 
                             MouseArea {
                                 id: cardMouseArea
@@ -777,237 +698,260 @@ PanelWindow {
                                 onClicked: modelData.focus()
                             }
 
-                            // 1. Card Top Header: Dots, Title, App, Status, Close
-                            Rectangle {
-                                id: cardTopHeader
-                                anchors { top: parent.top; left: parent.left; right: parent.right }
-                                height: 34
-                                radius: 16
-                                color: "#161616"
-
-                                // Flat bottom corner
-                                Rectangle {
-                                    anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
-                                    height: 10
-                                    color: "#161616"
+                            // Inner Layout: Header + Preview Canvas
+                            Column {
+                                anchors {
+                                    fill: parent
+                                    margins: 12
                                 }
+                                spacing: 10
 
+                                // --- Card Header: Icon, App Name, Subtitle, Workspace Badge, Minimize, Maximize, Close ---
                                 Row {
-                                    anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
-                                    spacing: 8
+                                    width: parent.width
+                                    height: 40
 
-                                    // Window deco dots
+                                    // Left: App Icon & Title/Subtitle
                                     Row {
                                         anchors.verticalCenter: parent.verticalCenter
-                                        spacing: 5
-                                        Rectangle { width: 7; height: 7; radius: 3.5; color: "#ff5f56" }
-                                        Rectangle { width: 7; height: 7; radius: 3.5; color: "#ffbd2e" }
-                                        Rectangle { width: 7; height: 7; radius: 3.5; color: "#27c93f" }
-                                    }
+                                        width: parent.width - headerControls.width - 8
+                                        spacing: 10
 
-                                    // App title
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: windowCard.width - 150
-                                        text: modelData.title
-                                        font { family: Theme.ui; pixelSize: 11; weight: Font.Medium }
-                                        color: isSelectedByKeyboard || cardMouseArea.containsMouse ? "#ffffff" : Theme.fg
-                                        elide: Text.ElideRight
-                                    }
-                                }
+                                        // App Logo
+                                        Rectangle {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: 34
+                                            height: 34
+                                            radius: 17
+                                            color: "#181818"
+                                            border { width: 1; color: "#282828" }
 
-                                // Header Right: Status badge & Close button
-                                Row {
-                                    anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
-                                    spacing: 6
+                                            Image {
+                                                anchors.centerIn: parent
+                                                width: 22
+                                                height: 22
+                                                source: modelData.iconPath
+                                                visible: status === Image.Ready
+                                            }
 
-                                    // Status Pill
-                                    Rectangle {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: statusText.width + 10
-                                        height: 18
-                                        radius: 9
-                                        color: "#222222"
-                                        border { width: 1; color: "#333333" }
+                                            Icon {
+                                                anchors.centerIn: parent
+                                                text: modelData.glyphChar
+                                                font.pixelSize: 18
+                                                color: Theme.fg
+                                                visible: !modelData.iconPath
+                                            }
+                                        }
 
-                                        Text {
-                                            id: statusText
-                                            anchors.centerIn: parent
-                                            text: modelData.status.toUpperCase()
-                                            font { family: Theme.mono; pixelSize: 8; weight: Font.Bold }
-                                            color: Theme.grey
+                                        // App Name & Window Title Column
+                                        Column {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: parent.width - 44
+                                            spacing: 2
+
+                                            Text {
+                                                width: parent.width
+                                                text: modelData.appName
+                                                font { family: Theme.ui; pixelSize: 13; weight: Font.Bold }
+                                                color: isSelectedByKeyboard || cardMouseArea.containsMouse ? "#ffffff" : Theme.fg
+                                                elide: Text.ElideRight
+                                            }
+
+                                            Text {
+                                                width: parent.width
+                                                text: modelData.title
+                                                font { family: Theme.ui; pixelSize: 11 }
+                                                color: Theme.grey
+                                                elide: Text.ElideRight
+                                            }
                                         }
                                     }
 
-                                    // Close Button
+                                    // Right: WS Badge & Window Controls
+                                    Row {
+                                        id: headerControls
+                                        anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                                        spacing: 8
+
+                                        // Workspace Pill (e.g. WS 2)
+                                        Rectangle {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: wsBadgeText.width + 14
+                                            height: 24
+                                            radius: 12
+                                            color: "#1a1a1a"
+                                            border { width: 1; color: "#2a2a2a" }
+
+                                            Text {
+                                                id: wsBadgeText
+                                                anchors.centerIn: parent
+                                                text: `WS ${modelData.workspaceName}`
+                                                font { family: Theme.mono; pixelSize: 10; weight: Font.Bold }
+                                                color: Theme.fg
+                                            }
+                                        }
+
+                                        // Minimize Button: —
+                                        Rectangle {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: 24
+                                            height: 24
+                                            radius: 12
+                                            color: minHover.containsMouse ? "#2a2a2a" : "#1a1a1a"
+                                            border { width: 1; color: "#2a2a2a" }
+
+                                            Text {
+                                                anchors.centerIn: parent
+                                                text: "\u{2014}"
+                                                font { pixelSize: 11; weight: Font.Bold }
+                                                color: Theme.grey
+                                            }
+
+                                            MouseArea {
+                                                id: minHover
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: modelData.minimizeWin()
+                                            }
+                                        }
+
+                                        // Maximize Button: □
+                                        Rectangle {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: 24
+                                            height: 24
+                                            radius: 12
+                                            color: maxHover.containsMouse ? "#2a2a2a" : "#1a1a1a"
+                                            border { width: 1; color: "#2a2a2a" }
+
+                                            Text {
+                                                anchors.centerIn: parent
+                                                text: "\u{25A2}"
+                                                font { pixelSize: 13; weight: Font.Bold }
+                                                color: Theme.grey
+                                            }
+
+                                            MouseArea {
+                                                id: maxHover
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: modelData.toggleFullscreen()
+                                            }
+                                        }
+
+                                        // Close Button: ✕ (Red accent circle)
+                                        Rectangle {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: 24
+                                            height: 24
+                                            radius: 12
+                                            color: closeHover.containsMouse ? "#ff333a" : Theme.red
+
+                                            Text {
+                                                anchors.centerIn: parent
+                                                text: "\u{2715}"
+                                                font { pixelSize: 11; weight: Font.Bold }
+                                                color: "#ffffff"
+                                            }
+
+                                            MouseArea {
+                                                id: closeHover
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: modelData.closeWin()
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // --- Actual Window Content Preview Canvas ---
+                                Rectangle {
+                                    width: parent.width
+                                    height: parent.height - 50
+                                    radius: 12
+                                    color: "#080808"
+                                    border { width: 1; color: "#1c1c1c" }
+                                    clip: true
+
+                                    // Live Window Thumbnail Image
+                                    Image {
+                                        anchors.fill: parent
+                                        source: modelData.preview ? `file://${modelData.preview}` : ""
+                                        fillMode: Image.PreserveAspectFit
+                                        asynchronous: true
+                                        cache: false
+                                        visible: status === Image.Ready && !!modelData.preview
+                                    }
+
+                                    // Fallback UI if thumbnail is not ready or window is on another workspace
+                                    Item {
+                                        anchors.fill: parent
+                                        visible: !modelData.preview
+
+                                        // Central subtle logo watermark
+                                        Icon {
+                                            anchors.centerIn: parent
+                                            text: modelData.glyphChar
+                                            font.pixelSize: 64
+                                            color: "#ffffff"
+                                            opacity: isSelectedByKeyboard || cardMouseArea.containsMouse ? 0.20 : 0.10
+                                        }
+
+                                        Text {
+                                            anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 12 }
+                                            text: `Workspace ${modelData.workspaceName}`
+                                            font { family: Theme.mono; pixelSize: 10; weight: Font.Bold }
+                                            color: Theme.mute
+                                        }
+                                    }
+
+                                    // Compact Overlay: Real-time CPU & RAM Usage (top right corner inside preview)
                                     Rectangle {
-                                        id: closeButton
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: 20
+                                        anchors { top: parent.top; right: parent.right; margins: 8 }
+                                        width: metricsRow.width + 12
                                         height: 20
                                         radius: 10
-                                        color: closeMouse.containsMouse ? Theme.red : "#222222"
+                                        color: Qt.rgba(0, 0, 0, 0.72)
+                                        border { width: 1; color: "#2a2a2a" }
 
-                                        Text {
+                                        Row {
+                                            id: metricsRow
                                             anchors.centerIn: parent
-                                            text: "\u{00D7}"
-                                            font { pixelSize: 13; weight: Font.Bold }
-                                            color: closeMouse.containsMouse ? "#ffffff" : Theme.grey
-                                        }
+                                            spacing: 6
 
-                                        MouseArea {
-                                            id: closeMouse
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: modelData.closeWin()
-                                        }
-                                    }
-                                }
-                            }
+                                            // CPU
+                                            Row {
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                spacing: 3
+                                                Rectangle { width: 4; height: 4; radius: 2; color: Theme.red; anchors.verticalCenter: parent.verticalCenter }
+                                                Text {
+                                                    text: modelData.cpu
+                                                    font { family: Theme.mono; pixelSize: 8; weight: Font.Bold }
+                                                    color: Theme.grey
+                                                }
+                                            }
 
-                            // 2. Real Window Preview Canvas
-                            Rectangle {
-                                id: previewCanvas
-                                anchors {
-                                    top: cardTopHeader.bottom
-                                    left: parent.left
-                                    right: parent.right
-                                    bottom: resourceFooter.top
-                                }
-                                color: "#0c0c0c"
-                                clip: true
+                                            // Separator
+                                            Text {
+                                                text: "·"
+                                                font { family: Theme.mono; pixelSize: 8 }
+                                                color: Theme.mute
+                                            }
 
-                                // Thumbnail Image
-                                Image {
-                                    anchors.fill: parent
-                                    source: modelData.preview ? `file://${modelData.preview}` : ""
-                                    fillMode: Image.PreserveAspectFit
-                                    asynchronous: true
-                                    cache: false
-                                    visible: status === Image.Ready && !!modelData.preview
-                                }
-
-                                // Fallback Dot Matrix Watermark if window is not on current screen
-                                Column {
-                                    anchors.centerIn: parent
-                                    visible: !modelData.preview
-                                    spacing: 8
-
-                                    Icon {
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        text: modelData.glyphChar
-                                        font.pixelSize: 48
-                                        color: "#ffffff"
-                                        opacity: isSelectedByKeyboard || cardMouseArea.containsMouse ? 0.25 : 0.12
-                                    }
-
-                                    Text {
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        text: `WS ${modelData.workspaceName}`
-                                        font { family: Theme.mono; pixelSize: 10; weight: Font.Bold }
-                                        color: Theme.mute
-                                    }
-                                }
-                            }
-
-                            // 3. Bottom Resource & Identity Bar
-                            Rectangle {
-                                id: resourceFooter
-                                anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
-                                height: 38
-                                radius: 16
-                                color: "#141414"
-
-                                // Flat top corner
-                                Rectangle {
-                                    anchors { top: parent.top; left: parent.left; right: parent.right }
-                                    height: 10
-                                    color: "#141414"
-                                }
-
-                                Row {
-                                    anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter }
-                                    spacing: 8
-
-                                    // App Icon / Logo
-                                    Rectangle {
-                                        width: 24
-                                        height: 24
-                                        radius: 12
-                                        color: "#202020"
-                                        border { width: 1; color: "#333333" }
-
-                                        Image {
-                                            anchors.centerIn: parent
-                                            width: 16
-                                            height: 16
-                                            source: modelData.iconPath
-                                            visible: status === Image.Ready
-                                        }
-
-                                        Icon {
-                                            anchors.centerIn: parent
-                                            text: modelData.glyphChar
-                                            font.pixelSize: 12
-                                            color: Theme.fg
-                                            visible: !modelData.iconPath
-                                        }
-                                    }
-
-                                    // App Name
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: modelData.appClass.toUpperCase()
-                                        font { family: Theme.mono; pixelSize: 10; weight: Font.Bold }
-                                        color: Theme.fg
-                                    }
-                                }
-
-                                // Resource Metrics: CPU & Memory Usage
-                                Row {
-                                    anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
-                                    spacing: 8
-
-                                    // CPU Metric
-                                    Row {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        spacing: 4
-
-                                        Rectangle {
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            width: 5
-                                            height: 5
-                                            radius: 2.5
-                                            color: Theme.red
-                                        }
-
-                                        Text {
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            text: `CPU ${modelData.cpu}`
-                                            font { family: Theme.mono; pixelSize: 9; weight: Font.Bold }
-                                            color: Theme.grey
-                                        }
-                                    }
-
-                                    // RAM Metric
-                                    Row {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        spacing: 4
-
-                                        Rectangle {
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            width: 5
-                                            height: 5
-                                            radius: 2.5
-                                            color: "#ffffff"
-                                        }
-
-                                        Text {
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            text: `RAM ${modelData.mem}`
-                                            font { family: Theme.mono; pixelSize: 9; weight: Font.Bold }
-                                            color: Theme.grey
+                                            // RAM
+                                            Row {
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                spacing: 3
+                                                Rectangle { width: 4; height: 4; radius: 2; color: "#ffffff"; anchors.verticalCenter: parent.verticalCenter }
+                                                Text {
+                                                    text: modelData.mem
+                                                    font { family: Theme.mono; pixelSize: 8; weight: Font.Bold }
+                                                    color: Theme.grey
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -1018,209 +962,101 @@ PanelWindow {
             }
         }
 
-        // --- SECTION 3: COMPACT APPLICATION LAUNCHER ---
-        Rectangle {
-            id: launcherArea
-            anchors {
-                bottom: cheatsheetBar.top
-                bottomMargin: 10
-                left: parent.left
-                leftMargin: 40
-                right: parent.right
-                rightMargin: 40
-            }
-            height: 74
-            radius: 18
-            color: root.activeSection === 3 ? "#181818" : "#121212"
-            border {
-                width: root.activeSection === 3 ? 2 : 1
-                color: root.activeSection === 3 ? "#ffffff" : "#262626"
-            }
-
-            Row {
-                anchors.fill: parent
-                anchors.margins: 8
-                spacing: 12
-
-                // Launcher Label
-                Column {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 70
-                    spacing: 2
-
-                    Text {
-                        text: "LAUNCH"
-                        font { family: Theme.mono; pixelSize: 10; weight: Font.Bold; letterSpacing: 1 }
-                        color: Theme.fg
-                    }
-                    Text {
-                        text: `${root.installedApps.length} APPS`
-                        font { family: Theme.mono; pixelSize: 9 }
-                        color: Theme.grey
-                    }
-                }
-
-                // Vertical divider
-                Rectangle {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 1
-                    height: 36
-                    color: Theme.s3
-                }
-
-                // Horizontal Carousel of Applications
-                Flickable {
-                    id: appFlickable
-                    width: parent.width - 95
-                    height: parent.height
-                    contentWidth: appRow.width
-                    contentHeight: height
-                    clip: true
-                    boundsBehavior: Flickable.StopAtBounds
-
-                    Row {
-                        id: appRow
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 10
-
-                        Repeater {
-                            model: root.installedApps.slice(0, 30) // Show up to 30 matching apps
-
-                            delegate: Rectangle {
-                                id: appItem
-                                required property var modelData
-                                required property int index
-
-                                readonly property bool isSelectedByKeyboard: root.activeSection === 3 && root.selectedAppIndex === index
-
-                                width: 140
-                                height: 48
-                                radius: 12
-                                color: isSelectedByKeyboard || appMouse.containsMouse ? "#222222" : "#161616"
-                                border {
-                                    width: isSelectedByKeyboard ? 2 : 1
-                                    color: isSelectedByKeyboard ? "#ffffff" : (appMouse.containsMouse ? "#444444" : "#262626")
-                                }
-
-                                Row {
-                                    anchors { fill: parent; margins: 6 }
-                                    spacing: 8
-
-                                    // App Icon
-                                    Item {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: 32
-                                        height: 32
-
-                                        Rectangle {
-                                            anchors.fill: parent
-                                            radius: 16
-                                            color: "#1e1e1e"
-                                        }
-
-                                        Image {
-                                            anchors.centerIn: parent
-                                            width: 22
-                                            height: 22
-                                            source: modelData.iconPath
-                                            visible: status === Image.Ready
-                                        }
-
-                                        Icon {
-                                            anchors.centerIn: parent
-                                            text: modelData.glyphChar
-                                            font.pixelSize: 16
-                                            color: Theme.fg
-                                            visible: !modelData.iconPath
-                                        }
-
-                                        // Red Running Indicator Dot
-                                        Rectangle {
-                                            anchors { bottom: parent.bottom; right: parent.right }
-                                            width: 7
-                                            height: 7
-                                            radius: 3.5
-                                            color: Theme.red
-                                            visible: modelData.isRunning
-                                        }
-                                    }
-
-                                    // App Name
-                                    Column {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: parent.width - 42
-                                        spacing: 2
-
-                                        Text {
-                                            width: parent.width
-                                            text: modelData.name
-                                            font { family: Theme.ui; pixelSize: 11; weight: Font.Medium }
-                                            color: Theme.fg
-                                            elide: Text.ElideRight
-                                        }
-
-                                        Text {
-                                            width: parent.width
-                                            text: modelData.isRunning ? "RUNNING" : "INSTALLED"
-                                            font { family: Theme.mono; pixelSize: 8; weight: Font.Bold }
-                                            color: modelData.isRunning ? Theme.red : Theme.grey
-                                        }
-                                    }
-                                }
-
-                                MouseArea {
-                                    id: appMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: modelData.execute()
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // --- SECTION 4: BOTTOM CHEATSHEET BAR ---
+        // --- 5. BOTTOM MINIMAL KEYBOARD CHEATSHEET ---
         Row {
             id: cheatsheetBar
             anchors {
                 bottom: parent.bottom
-                bottomMargin: 14
+                bottomMargin: 24
                 horizontalCenter: parent.horizontalCenter
             }
-            spacing: 16
+            spacing: 12
 
-            Text {
-                text: "[TAB] SWITCH SECTION"
-                font { family: Theme.mono; pixelSize: 10; weight: Font.Bold }
-                color: root.activeSection === 0 ? "#ffffff" : Theme.grey
+            component KeyCap: Rectangle {
+                property alias text: label.text
+                width: label.implicitWidth + 14
+                height: 20
+                radius: 5
+                color: "#161616"
+                border.width: 1
+                border.color: "#303030"
+
+                Text {
+                    id: label
+                    anchors.centerIn: parent
+                    font.family: Theme.mono
+                    font.pixelSize: 9
+                    font.weight: Font.Bold
+                    color: "#ffffff"
+                }
             }
-            Text {
-                text: "[ARROWS] NAVIGATE"
-                font { family: Theme.mono; pixelSize: 10; weight: Font.Bold }
+
+            component CheatsheetLabel: Text {
+                anchors.verticalCenter: parent.verticalCenter
+                font.family: Theme.mono
+                font.pixelSize: 9
+                font.weight: Font.Bold
                 color: Theme.grey
             }
-            Text {
-                text: "[ENTER] FOCUS / LAUNCH"
-                font { family: Theme.mono; pixelSize: 10; weight: Font.Bold }
-                color: Theme.grey
+
+            component CheatsheetDivider: Text {
+                anchors.verticalCenter: parent.verticalCenter
+                font.family: Theme.mono
+                font.pixelSize: 10
+                color: "#333333"
+                text: "|"
             }
-            Text {
-                text: "[1-9] SWITCH WS"
-                font { family: Theme.mono; pixelSize: 10; weight: Font.Bold }
-                color: Theme.grey
+
+            // [TAB] SWITCH SECTION
+            Row {
+                spacing: 6
+                anchors.verticalCenter: parent.verticalCenter
+                KeyCap { text: "TAB" }
+                CheatsheetLabel { text: "SWITCH SECTION" }
             }
-            Text {
-                text: "[SUPER+SHIFT+←/→] MOVE WINDOW"
-                font { family: Theme.mono; pixelSize: 10; weight: Font.Bold }
-                color: Theme.grey
+
+            CheatsheetDivider {}
+
+            // [↑] [↓] [←] [→] NAVIGATE
+            Row {
+                spacing: 4
+                anchors.verticalCenter: parent.verticalCenter
+                KeyCap { text: "↑"; width: 20 }
+                KeyCap { text: "↓"; width: 20 }
+                KeyCap { text: "←"; width: 20 }
+                KeyCap { text: "→"; width: 20 }
+                Item { width: 2; height: 1 }
+                CheatsheetLabel { text: "NAVIGATE" }
             }
-            Text {
-                text: "[ESC] CLOSE"
-                font { family: Theme.mono; pixelSize: 10; weight: Font.Bold }
-                color: Theme.grey
+
+            CheatsheetDivider {}
+
+            // [ENTER] FOCUS WINDOW
+            Row {
+                spacing: 6
+                anchors.verticalCenter: parent.verticalCenter
+                KeyCap { text: "ENTER" }
+                CheatsheetLabel { text: "FOCUS WINDOW" }
+            }
+
+            CheatsheetDivider {}
+
+            // [SUPER + SHIFT + ARROWS] MOVE TO WORKSPACE
+            Row {
+                spacing: 6
+                anchors.verticalCenter: parent.verticalCenter
+                KeyCap { text: "SUPER + SHIFT + ARROWS" }
+                CheatsheetLabel { text: "MOVE TO WORKSPACE" }
+            }
+
+            CheatsheetDivider {}
+
+            // [ESC] CLOSE OVERVIEW
+            Row {
+                spacing: 6
+                anchors.verticalCenter: parent.verticalCenter
+                KeyCap { text: "ESC" }
+                CheatsheetLabel { text: "CLOSE OVERVIEW" }
             }
         }
     }
