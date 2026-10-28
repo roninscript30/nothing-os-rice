@@ -1,0 +1,32 @@
+#!/bin/sh
+# Launcher for Nothing OS (Glyph) Rice Hyprland Session
+
+export XDG_CURRENT_DESKTOP="Hyprland"
+export XDG_SESSION_TYPE=wayland
+export XDG_SESSION_DESKTOP=Hyprland
+export RICE_SESSION=nothing-os
+
+# Ensure state and shell selector is glyph
+mkdir -p "$HOME/.local/state/rice"
+echo glyph > "$HOME/.local/state/rice/shell"
+
+# Ensure ~/.local/bin is in PATH
+export PATH="$HOME/.local/bin:$PATH"
+
+# Start Hyprland with Nothing OS configuration
+/usr/bin/start-hyprland -- --config "$HOME/.config/hypr-nothing-os/hyprland.lua"
+EXIT_CODE=$?
+
+# Teardown all session daemons when logging out of Nothing OS
+~/.local/bin/rice kill 2>/dev/null || true
+pkill -u "$USER" -f "^qs " 2>/dev/null || true
+pkill -u "$USER" -f "hypridle" 2>/dev/null || true
+pkill -u "$USER" -f "cliphist" 2>/dev/null || true
+pkill -u "$USER" -f "xdg-desktop-portal-hyprland" 2>/dev/null || true
+pkill -u "$USER" -f "swaync" 2>/dev/null || true
+
+# Restore Ubuntu default gsettings on session exit
+gsettings set org.gnome.desktop.interface icon-theme "Yaru-blue-dark" 2>/dev/null || true
+gsettings set org.gnome.desktop.interface cursor-theme "Bibata-Modern-Ice" 2>/dev/null || true
+
+exit $EXIT_CODE

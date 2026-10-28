@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Nothing OS Rice
+Comment=Hyprland with Nothing OS (Glyph) rice
+Exec=/usr/local/bin/start-nothing-os
+Type=Application
+DesktopNames=Hyprland
+Keywords=tiling;wayland;compositor;nothing;glyph;

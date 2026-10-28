@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+"""
+workspace-kill-clean: Safely terminates all applications existing on the current active workspace.
+- Sends closewindow to every window on the workspace.
+- For processes whose only windows were on this workspace, sends SIGTERM then SIGKILL.
+- If an application (like a multi-window browser) also has windows on other workspaces,
+  only the windows on the current workspace are closed and the process is spared.
+- Cleans up lingering orphan processes and flushes filesystem caches.
+"""
+
+import sys
+import os
+import time
+import signal
+import json
+import subprocess
+
+def get_descendants(parent_pid):
+    desc = set()
+    queue = [parent_pid]
+    while queue:
+        curr = queue.pop(0)
+        try:
+            out = subprocess.check_output(['pgrep', '-P', str(curr)], text=True, stderr=subprocess.DEVNULL)
+            for line in out.strip().split():
+                if line.isdigit():
+                    c_pid = int(line)
+                    if c_pid not in desc:
+                        desc.add(c_pid)
+                        queue.append(c_pid)
+        except Exception:
+            pass
+    return desc
+
+def main():
+    try:
+        monitors = json.loads(subprocess.check_output(['hyprctl', 'monitors', '-j'], text=True))
+    except Exception:
+        return
+
+    focused_mon = next((m for m in monitors if m.get('focused')), monitors[0] if monitors else None)
+    if not focused_mon:
+        return
+
+    active_ws = focused_mon.get('activeWorkspace', {}).get('id')
+    if focused_mon.get('specialWorkspace', {}).get('id', 0) > 0:
+        active_ws = focused_mon['specialWorkspace']['id']
+
+    if active_ws is None:
+        return
+
+    try:
+        clients = json.loads(subprocess.check_output(['hyprctl', 'clients', '-j'], text=True))
+    except Exception:
+        return
+
+    ws_clients = [c for c in clients if c.get('workspace', {}).get('id') == active_ws]
+    if not ws_clients:
+        return
+
+    other_clients = [c for c in clients if c.get('workspace', {}).get('id') != active_ws]
+    other_pids = {c.get('pid') for c in other_clients if c.get('pid')}
+
+    # 1. Close all windows on the active workspace via Hyprland dispatcher
+    for c in ws_clients:
+        addr = c.get('address')
+        if addr:
+            try:
+                subprocess.run(
+                    ['hyprctl', 'dispatch', f'hl.dsp.window.close({{ window = "address:{addr}" }})'],
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+            except Exception:
+                pass
+
+    # 2. Determine which PIDs belong exclusively to this workspace
+    kill_pids = set()
+    comms = set()
+    for c in ws_clients:
+        pid = c.get('pid')
+        if pid and pid > 1 and pid not in other_pids:
+            kill_pids.add(pid)
+            try:
+                with open(f'/proc/{pid}/comm', 'r') as f:
+                    comm_name = f.read().strip()
+                    if comm_name and comm_name not in ('systemd', 'hyprland', 'pipewire', 'wireplumber', 'dbus-daemon'):
+                        comms.add(comm_name)
+            except Exception:
+                pass
+
+    if not kill_pids:
+        return
+
+    # Grace period for windows to close themselves
+    time.sleep(0.15)
+
+    all_kill_pids = set()
+    for pid in kill_pids:
+        try:
+            os.kill(pid, 0)
+            # Process is still alive
+            all_kill_pids.add(pid)
+            all_kill_pids.update(get_descendants(pid))
+        except OSError:
+            pass
+
+    if not all_kill_pids:
+        return
+
+    # 3. SIGTERM (graceful shutdown)
+    for p in all_kill_pids:
+        try:
+            os.kill(p, signal.SIGTERM)
+        except OSError:
+            pass
+
+    # Wait up to 200ms
+    time.sleep(0.1)
+    time.sleep(0.1)
+
+    # 4. SIGKILL (force termination of stubborn leftovers)
+    for p in all_kill_pids:
+        try:
+            os.kill(p, signal.SIGKILL)
+        except OSError:
+            pass
+
+    # 5. Clean up any detached orphan processes (PPID=1) owned by user
+    current_uid = os.getuid()
+    for comm in comms:
+        try:
+            out = subprocess.check_output(['pgrep', '-u', str(current_uid), '-x', comm], text=True, stderr=subprocess.DEVNULL)
+            for line in out.strip().split():
+                if line.isdigit():
+                    orphan_pid = int(line)
+                    if orphan_pid != os.getpid() and orphan_pid != os.getppid():
+                        try:
+                            with open(f'/proc/{orphan_pid}/stat', 'r') as sf:
+                                ppid = int(sf.read().split()[3])
+                                if ppid == 1:
+                                    os.kill(orphan_pid, signal.SIGTERM)
+                                    time.sleep(0.05)
+                                    os.kill(orphan_pid, signal.SIGKILL)
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+    try:
+        os.sync()
+    except Exception:
+        pass
+
+if __name__ == '__main__':
+    main()

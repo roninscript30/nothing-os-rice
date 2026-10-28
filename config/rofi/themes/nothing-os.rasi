@@ -1,0 +1,183 @@
+/*
+ * Quickshell Glyph Rice 1:1 Theme for Rofi
+ * Direct replication of the original Quickshell Nothing OS launcher
+ *
+ * - Panel: 960px width, 44px radius, #0E0E0E background, 1px #1A1A1A border
+ * - Search bar: 66px pill (#1A1A1A) with search lens icon, centered entry, and [apps / windows] mode chips
+ * - App Grid: 6 columns × 5 rows with multi-line word wrapping for long application names
+ * - Icons: Centered 48px icons with Space Grotesk labels
+ * - Colors: Pure Quickshell Theme.qml tokens (s1 #0E0E0E, s2 #1A1A1A, s3 #2A2A2A, fg #FFFFFF, grey #8C8C8C)
+ */
+
+configuration {
+    modi:                       "drun,window";
+    show-icons:                 true;
+    display-drun:               "apps";
+    display-window:             "windows";
+    drun-display-format:        "{name}";
+    window-format:              "{c}";
+    font:                       "Space Grotesk, JetBrainsMono Nerd Font 13";
+    icon-theme:                 "Papirus-Dark";
+    disable-history:            false;
+    max-history-size:           100;
+    drun-use-desktop-cache:     true;
+    drun-reload-desktop-cache:  false;
+    drun-match-fields:          "name,generic,exec,categories,keywords";
+}
+
+* {
+    bg:                         #0E0E0EF6;
+    s1:                         #0E0E0EFF;
+    s2:                         #1A1A1AFF;
+    s3:                         #2A2A2AFF;
+    border-col:                 #1A1A1AFF;
+    fg:                         #FFFFFFFF;
+    grey:                       #8C8C8CFF;
+    mute:                       #4A4A4AFF;
+    ink:                        #000000FF;
+
+    background-color:           transparent;
+    text-color:                 @fg;
+    margin:                     0px;
+    padding:                    0px;
+    spacing:                    0px;
+}
+
+window {
+    location:                   center;
+    anchor:                     center;
+    width:                      960px;
+    height:                     750px;
+    border:                     1px solid;
+    border-color:               @border-col;
+    border-radius:              44px;
+    background-color:           @bg;
+    cursor:                     "default";
+}
+
+mainbox {
+    enabled:                    true;
+    spacing:                    24px;
+    padding:                    32px;
+    background-color:           transparent;
+    children:                   [ "inputbar", "listview" ];
+}
+
+inputbar {
+    enabled:                    true;
+    spacing:                    16px;
+    padding:                    8px 12px 8px 24px;
+    background-color:           @s2;
+    border-radius:              33px;
+    children:                   [ "textbox-prompt-colon", "entry", "mode-switcher" ];
+}
+
+textbox-prompt-colon {
+    enabled:                    true;
+    expand:                     false;
+    str:                        "󰍉";
+    font:                       "JetBrainsMono Nerd Font 18";
+    text-color:                 @grey;
+    vertical-align:             0.5;
+    horizontal-align:           0.5;
+}
+
+entry {
+    enabled:                    true;
+    expand:                     true;
+    background-color:           transparent;
+    text-color:                 @fg;
+    cursor:                     text;
+    placeholder:                "Search apps, files, commands";
+    placeholder-color:          @mute;
+    font:                       "Space Grotesk 14";
+    vertical-align:             0.5;
+}
+
+mode-switcher {
+    enabled:                    true;
+    expand:                     false;
+    spacing:                    6px;
+    background-color:           transparent;
+    vertical-align:             0.5;
+}
+
+button {
+    padding:                    8px 18px;
+    border-radius:              18px;
+    background-color:           transparent;
+    text-color:                 @grey;
+    font:                       "Space Grotesk 12";
+    cursor:                     pointer;
+    vertical-align:             0.5;
+    horizontal-align:           0.5;
+}
+
+button selected {
+    background-color:           @fg;
+    text-color:                 @ink;
+    font:                       "Space Grotesk Bold 12";
+}
+
+listview {
+    enabled:                    true;
+    columns:                    6;
+    lines:                      5;
+    cycle:                      true;
+    dynamic:                    true;
+    scrollbar:                  false;
+    layout:                     vertical;
+    reverse:                    false;
+    fixed-height:               true;
+    fixed-columns:              true;
+    spacing:                    14px;
+    background-color:           transparent;
+}
+
+element {
+    enabled:                    true;
+    orientation:                vertical;
+    spacing:                    8px;
+    padding:                    12px 6px 10px 6px;
+    border-radius:              22px;
+    background-color:           transparent;
+    text-color:                 @grey;
+    cursor:                     pointer;
+    border:                     0px;
+}
+
+element normal.normal {
+    background-color:           transparent;
+    text-color:                 @grey;
+}
+
+element selected.normal {
+    background-color:           @s2;
+    text-color:                 @fg;
+    border:                     2px solid;
+    border-color:               @fg;
+}
+
+element alternate.normal {
+    background-color:           transparent;
+    text-color:                 @grey;
+}
+
+element-icon {
+    background-color:           transparent;
+    size:                       48px;
+    horizontal-align:           0.5;
+    vertical-align:             0.5;
+    cursor:                     inherit;
+}
+
+element-text {
+    background-color:           transparent;
+    text-color:                 inherit;
+    highlight:                  inherit;
+    cursor:                     inherit;
+    vertical-align:             0.5;
+    horizontal-align:           0.5;
+    font:                       "Space Grotesk 12";
+    wrap:                       true;
+}

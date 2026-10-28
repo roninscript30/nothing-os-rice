@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+"""
+app-kill-clean: Safely terminates the window under the mouse cursor.
+If multiple windows share the same PID (e.g., multi-terminal Kitty, Chrome/Edge tabs),
+only the targeted window under the cursor is closed.
+When closing the last/only window of an application, it ensures clean process tree termination
+and cleans up lingering orphans to save RAM.
+"""
+
+import sys
+import os
+import time
+import signal
+import json
+import subprocess
+
+def get_descendants(parent_pid):
+    desc = set()
+    queue = [parent_pid]
+    while queue:
+        curr = queue.pop(0)
+        try:
+            out = subprocess.check_output(['pgrep', '-P', str(curr)], text=True, stderr=subprocess.DEVNULL)
+            for line in out.strip().split():
+                if line.isdigit():
+                    c_pid = int(line)
+                    if c_pid not in desc:
+                        desc.add(c_pid)
+                        queue.append(c_pid)
+        except Exception:
+            pass
+    return desc
+
+def main():
+    try:
+        # 1. Get cursor position
+        pos_str = subprocess.check_output(['hyprctl', 'cursorpos'], text=True).strip()
+        parts = [int(v.strip()) for v in pos_str.split(',')]
+        cx, cy = parts[0], parts[1]
+    except Exception:
+        cx, cy = None, None
+
+    try:
+        # 2. Get monitors and visible workspaces
+        monitors = json.loads(subprocess.check_output(['hyprctl', 'monitors', '-j'], text=True))
+        visible_ws = set()
+        for m in monitors:
+            if 'activeWorkspace' in m and m['activeWorkspace'].get('id'):
+                visible_ws.add(m['activeWorkspace']['id'])
+            if 'specialWorkspace' in m and m['specialWorkspace'].get('id', 0) > 0:
+                visible_ws.add(m['specialWorkspace']['id'])
+    except Exception:
+        monitors = []
+        visible_ws = set()
+
+    try:
+        clients = json.loads(subprocess.check_output(['hyprctl', 'clients', '-j'], text=True))
+    except Exception:
+        clients = []
+
+    target = None
+
+    # 3. Hit-test against visible clients
+    if cx is not None and cy is not None and clients:
+        visible_clients = [c for c in clients if c.get('workspace', {}).get('id') in visible_ws]
+        floating = [c for c in visible_clients if c.get('floating')]
+        tiled = [c for c in visible_clients if not c.get('floating')]
+
+        # Check floating windows first (top-most in reverse order)
+        for c in reversed(floating):
+            x, y = c.get('at', [0, 0])
+            w, h = c.get('size', [0, 0])
+            if x <= cx <= x + w and y <= cy <= y + h:
+                target = c
+                break
+
+        # Check tiled windows next
+        if not target:
+            for c in reversed(tiled):
+                x, y = c.get('at', [0, 0])
+                w, h = c.get('size', [0, 0])
+                if x <= cx <= x + w and y <= cy <= y + h:
+                    target = c
+                    break
+
+    # 4. Fallback to active window if cursor is on desktop background / empty bar
+    if not target:
+        try:
+            active = json.loads(subprocess.check_output(['hyprctl', 'activewindow', '-j'], text=True))
+            if active and (active.get('pid') or active.get('address')):
+                target = active
+        except Exception:
+            pass
+
+    if not target:
+        # Last resort fallback: dispatch close to active window
+        try:
+            subprocess.run(['hyprctl', 'dispatch', 'hl.dsp.window.close()'], check=False)
+        except Exception:
+            pass
+        return
+
+    pid = target.get('pid')
+    addr = target.get('address', '')
+    cls = target.get('class', '')
+
+    # 5. Check if there are other windows open with the same PID
+    other_windows_same_pid = [
+        c for c in clients
+        if c.get('pid') == pid and c.get('address') != addr
+    ]
+
+    # Close the specific window in Hyprland
+    if addr:
+        try:
+            subprocess.run(
+                ['hyprctl', 'dispatch', f'hl.dsp.window.close({{ window = "address:{addr}" }})'],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        except Exception:
+            pass
+    else:
+        try:
+            subprocess.run(['hyprctl', 'dispatch', 'hl.dsp.window.close()'], check=False)
+        except Exception:
+            pass
+
+    # If other windows exist for this PID (e.g. multi-terminal Kitty, tabs/windows of browser),
+    # STOP HERE! Do not kill the PID or child processes.
+    if other_windows_same_pid:
+        return
+
+    # 6. If this was the only window for this PID, safely terminate process tree if it lingers
+    if not pid or pid <= 1:
+        return
+
+    # Check process comm name
+    comm = ''
+    try:
+        with open(f'/proc/{pid}/comm', 'r') as f:
+            comm = f.read().strip()
+    except Exception:
+        pass
+
+    # Grace period: check if process closes cleanly on its own within 250ms
+    time.sleep(0.1)
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        # Process already exited cleanly!
+        return
+
+    time.sleep(0.15)
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return
+
+    # Collect descendants
+    descendants = get_descendants(pid)
+    all_pids = [pid] + list(descendants)
+
+    # Send SIGTERM (15)
+    for p in all_pids:
+        try:
+            os.kill(p, signal.SIGTERM)
+        except OSError:
+            pass
+
+    # Wait up to 200ms
+    time.sleep(0.1)
+    time.sleep(0.1)
+
+    # Force SIGKILL (9) for any stubborn leftover processes
+    for p in all_pids:
+        try:
+            os.kill(p, signal.SIGKILL)
+        except OSError:
+            pass
+
+    # Clean up any detached orphan processes (PPID=1) owned by current user
+    if comm and comm not in ('systemd', 'hyprland', 'pipewire', 'wireplumber', 'dbus-daemon'):
+        try:
+            current_uid = os.getuid()
+            out = subprocess.check_output(['pgrep', '-u', str(current_uid), '-x', comm], text=True, stderr=subprocess.DEVNULL)
+            for line in out.strip().split():
+                if line.isdigit():
+                    orphan_pid = int(line)
+                    if orphan_pid != os.getpid() and orphan_pid != os.getppid():
+                        try:
+                            # Verify PPID is 1
+                            with open(f'/proc/{orphan_pid}/stat', 'r') as sf:
+                                ppid = int(sf.read().split()[3])
+                                if ppid == 1:
+                                    os.kill(orphan_pid, signal.SIGTERM)
+                                    time.sleep(0.05)
+                                    os.kill(orphan_pid, signal.SIGKILL)
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+    try:
+        os.sync()
+    except Exception:
+        pass
+
+if __name__ == '__main__':
+    main()
