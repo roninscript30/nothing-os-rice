@@ -2,10 +2,9 @@ local vars = require("variables")
 local fn   = require("hyprland.functions")
 
 -- Shell globals: shell:<name> - registered by the active shell (demonshot, glyph)
--- Single Super tap opens the running windows overview
+-- Running windows overview (Super tap or Super + Tab)
 hl.bind("SUPER + SUPER_L", hl.dsp.global("shell:windows"), { release = true })
--- Super + Tab cycles open windows
-hl.bind("SUPER + Tab", hl.dsp.global("shell:cycle_windows"))
+hl.bind("SUPER + Tab", hl.dsp.global("shell:windows"))
 
 
 -- App Launcher: Super + D
