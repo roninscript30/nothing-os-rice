@@ -25,7 +25,7 @@ return {
     terminal                   = "kitty -1", -- single-instance: новые окна из живого процесса, ~40 мс вместо ~400
     browser                    = "microsoft-edge-stable",
     editor                     = "codium",
-    fileExplorer               = "thunar",
+    fileExplorer               = "loaf",
     audioSettings              = "pavucontrol",
 
     -- Touchpad
