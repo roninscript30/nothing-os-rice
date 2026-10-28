@@ -58,9 +58,9 @@ def calculate_layout(count, mon_x, mon_y, mon_w, mon_h):
     layout_slots = []
 
     if count == 1:
-        # Centered gentle stage float (90% width, 90% height) - prevents sudden harsh compression
-        card_w = min(1680, int(avail_w * 0.90))
-        card_h = min(960, int(avail_h * 0.90))
+        # Centered stage float preserving full desktop UI breakpoints (e.g. YouTube sidebar/player)
+        card_w = min(1740, int(avail_w * 0.94))
+        card_h = min(980, int(avail_h * 0.94))
         card_x = mon_x + (mon_w - card_w) // 2
         card_y = mon_y + (mon_h - card_h) // 2
         layout_slots.append((card_x, card_y, card_w, card_h))
