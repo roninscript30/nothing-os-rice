@@ -1,11 +1,58 @@
 local vars = require("variables")
 local fn   = require("hyprland.functions")
 
+local overview_script = "/home/marudhu/REPOS/nothing-os-rice/config/hypr/scripts/app_overview.py"
+
 -- Shell globals: shell:<name> - registered by the active shell (demonshot, glyph)
--- Super key alone: runtime application floating overview (matches 3-finger swipe up gesture)
-hl.bind("SUPER + SUPER_L", hl.dsp.exec_cmd("/home/marudhu/REPOS/nothing-os-rice/config/hypr/scripts/app_overview.py"), { release = true })
--- Super + Tab: full zoomed-out overview with previews and workspace navigator
+-- Super key alone: runtime application floating overview for CURRENT workspace
+hl.bind("SUPER + Super_L", hl.dsp.exec_cmd(overview_script .. " toggle --current"), { release = true })
+hl.bind("SUPER + SUPER_L", hl.dsp.exec_cmd(overview_script .. " toggle --current"), { release = true })
+hl.bind("SUPER + Super_R", hl.dsp.exec_cmd(overview_script .. " toggle --current"), { release = true })
+
+-- Super + Tab: full zoomed-out overview with previews and workspace navigator (Quickshell)
 hl.bind("SUPER + Tab", hl.dsp.global("shell:windows"))
+
+-- Super + Shift + Tab: runtime application floating overview for ALL workspaces
+hl.bind("SUPER + SHIFT + Tab", hl.dsp.exec_cmd(overview_script .. " toggle --all"))
+
+-- Interactive overview submap for navigation when floating overview is active
+hl.define_submap("overview", function()
+    -- Mouse click on any floating window preview to select it and restore to normal
+    hl.bind("mouse:272", hl.dsp.exec_cmd(overview_script .. " select"))
+    hl.bind("SUPER + mouse:272", hl.dsp.exec_cmd(overview_script .. " select"))
+
+    -- Arrow keys navigation between floating application previews
+    hl.bind("right", hl.dsp.exec_cmd(overview_script .. " next"))
+    hl.bind("left",  hl.dsp.exec_cmd(overview_script .. " prev"))
+    hl.bind("down",  hl.dsp.exec_cmd(overview_script .. " down"))
+    hl.bind("up",    hl.dsp.exec_cmd(overview_script .. " up"))
+
+    -- Tab / Shift+Tab cycling
+    hl.bind("Tab",         hl.dsp.exec_cmd(overview_script .. " next"))
+    hl.bind("SHIFT + Tab", hl.dsp.exec_cmd(overview_script .. " prev"))
+
+    -- Super + Arrows / Super + Tab inside overview
+    hl.bind("SUPER + right", hl.dsp.exec_cmd(overview_script .. " next"))
+    hl.bind("SUPER + left",  hl.dsp.exec_cmd(overview_script .. " prev"))
+    hl.bind("SUPER + down",  hl.dsp.exec_cmd(overview_script .. " down"))
+    hl.bind("SUPER + up",    hl.dsp.exec_cmd(overview_script .. " up"))
+    hl.bind("SUPER + Tab",   hl.dsp.exec_cmd(overview_script .. " next"))
+
+    -- Enter / Space selects the focused window and restores to normal
+    hl.bind("Return", hl.dsp.exec_cmd(overview_script .. " select"))
+    hl.bind("Space",  hl.dsp.exec_cmd(overview_script .. " select"))
+
+    -- Escape restores to normal
+    hl.bind("Escape", hl.dsp.exec_cmd(overview_script .. " restore"))
+
+    -- Super key alone tap restores to normal
+    hl.bind("SUPER + Super_L", hl.dsp.exec_cmd(overview_script .. " restore"), { release = true })
+    hl.bind("SUPER + SUPER_L", hl.dsp.exec_cmd(overview_script .. " restore"), { release = true })
+    hl.bind("SUPER + Super_R", hl.dsp.exec_cmd(overview_script .. " restore"), { release = true })
+
+    -- Super + Shift + Tab restores to normal
+    hl.bind("SUPER + SHIFT + Tab", hl.dsp.exec_cmd(overview_script .. " restore"))
+end)
 
 
 -- App Launcher: Super + D

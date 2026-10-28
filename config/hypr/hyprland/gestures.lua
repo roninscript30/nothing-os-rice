@@ -19,14 +19,14 @@ hl.gesture({
     fingers   = 3,
     direction = "up",
     action    = function()
-        hl.exec_cmd("/home/marudhu/REPOS/nothing-os-rice/config/hypr/scripts/app_overview.py")
+        hl.exec_cmd("/home/marudhu/REPOS/nothing-os-rice/config/hypr/scripts/app_overview.py toggle --current")
     end,
 })
 hl.gesture({
     fingers   = 3,
     direction = "down",
     action    = function()
-        hl.exec_cmd("/home/marudhu/REPOS/nothing-os-rice/config/hypr/scripts/app_overview.py")
+        hl.exec_cmd("/home/marudhu/REPOS/nothing-os-rice/config/hypr/scripts/app_overview.py toggle --current")
     end,
 })
 hl.gesture({
