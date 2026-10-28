@@ -2,6 +2,9 @@
 
 A custom, high-performance, minimalist Nothing OS (Glyph) desktop environment built on **Hyprland** and **Quickshell** for Linux.
 
+> [!NOTE]
+> **Upstream & Attribution**: This configuration is copied, expanded, and customized from the upstream repository [Nebelung-cloud/glyph-rice](https://github.com/Nebelung-cloud/glyph-rice). Special thanks to the original authors for the Glyph shell foundations.
+
 ---
 
 ## Highlights & Features
@@ -77,3 +80,15 @@ cd ~/REPOS/nothing-os-rice
 ./install.sh
 hyprctl reload
 ```
+
+---
+
+## Upstream & Customizations
+
+This rice was originally branched and modified from [https://github.com/Nebelung-cloud/glyph-rice](https://github.com/Nebelung-cloud/glyph-rice).
+
+Key enhancements built on top of the original repository:
+- **Lock Screen Re-architecture**: Added 4K H.264 video background playback via QtMultimedia, circular anti-aliased profile pictures, auto-PIN verification, PAM watchdog, and an integrated session management gear menu (switch session, logout, reboot, poweroff).
+- **Process Management**: Custom hit-testing scripts (`app-kill-clean` and `workspace-kill-clean`) allowing precise, multi-terminal safe cursor window termination and workspace cleanup.
+- **Visual & Performance Tuning**: Switched to native 1080p 144Hz scale 1:1, crisp pure white window borders (`#ffffff`), and snappy animation curves.
+- **Rofi & Launcher Integration**: Embedded Nothing OS application search and styling.
