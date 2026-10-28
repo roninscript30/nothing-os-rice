@@ -6,7 +6,6 @@ local overview_script = "/home/marudhu/REPOS/nothing-os-rice/config/hypr/scripts
 -- Shell globals: shell:<name> - registered by the active shell (demonshot, glyph)
 -- Super key alone: runtime application floating overview for CURRENT workspace
 hl.bind("SUPER + Super_L", hl.dsp.exec_cmd(overview_script .. " toggle --current"), { release = true })
-hl.bind("SUPER + SUPER_L", hl.dsp.exec_cmd(overview_script .. " toggle --current"), { release = true })
 hl.bind("SUPER + Super_R", hl.dsp.exec_cmd(overview_script .. " toggle --current"), { release = true })
 
 -- Super + Tab: full zoomed-out overview with previews and workspace navigator (Quickshell)
@@ -47,7 +46,6 @@ hl.define_submap("overview", function()
 
     -- Super key alone tap restores to normal
     hl.bind("SUPER + Super_L", hl.dsp.exec_cmd(overview_script .. " restore"), { release = true })
-    hl.bind("SUPER + SUPER_L", hl.dsp.exec_cmd(overview_script .. " restore"), { release = true })
     hl.bind("SUPER + Super_R", hl.dsp.exec_cmd(overview_script .. " restore"), { release = true })
 
     -- Super + Shift + Tab restores to normal

@@ -58,9 +58,9 @@ def calculate_layout(count, mon_x, mon_y, mon_w, mon_h):
     layout_slots = []
 
     if count == 1:
-        # Centered generous preview (~78% width, ~84% height)
-        card_w = min(1400, int(avail_w * 0.78))
-        card_h = min(840, int(avail_h * 0.84))
+        # Centered gentle stage float (90% width, 90% height) - prevents sudden harsh compression
+        card_w = min(1680, int(avail_w * 0.90))
+        card_h = min(960, int(avail_h * 0.90))
         card_x = mon_x + (mon_w - card_w) // 2
         card_y = mon_y + (mon_h - card_h) // 2
         layout_slots.append((card_x, card_y, card_w, card_h))
@@ -223,6 +223,9 @@ def activate_overview(mode="current"):
             cstate = orig_fc if orig_fc > 0 else 2
             lua_cmds.append(f'hl.dispatch(hl.dsp.window.fullscreen_state({{ internal = 0, client = {cstate}, window = "{target}" }}))')
 
+        # Tag window to bypass default centering and enable single-pass fluid glide
+        lua_cmds.append(f'hl.dispatch(hl.dsp.window.tag({{ tag = "+overview", window = "{target}" }}))')
+
         # Float window
         lua_cmds.append(f'hl.dispatch(hl.dsp.window.float({{ action = "on", window = "{target}" }}))')
 
@@ -264,6 +267,9 @@ def restore_overview(selected_address=None):
         orig_ws = win.get("orig_workspace", active_ws_id)
         if mode == "all" and orig_ws != active_ws_id:
             lua_cmds.append(f'hl.dispatch(hl.dsp.window.move({{ workspace = "{orig_ws}", silent = true, window = "{target}" }}))')
+
+        # Remove overview tag
+        lua_cmds.append(f'hl.dispatch(hl.dsp.window.tag({{ tag = "-overview", window = "{target}" }}))')
 
         if not win.get("orig_floating", False):
             # Restore tiled state
@@ -406,6 +412,10 @@ def main():
         if os.path.exists(STATE_FILE):
             restore_overview()
         else:
+            activate_overview(mode=mode)
+    elif cmd == "activate":
+        mode = "all" if "--all" in args else "current"
+        if not os.path.exists(STATE_FILE):
             activate_overview(mode=mode)
     elif cmd == "next":
         navigate_direction("right")
