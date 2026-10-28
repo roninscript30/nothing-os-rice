@@ -73,6 +73,7 @@ PanelWindow {
             x: 190
             y: 700
             spacing: 28
+            Meta { icon: "\u{F05D7}"; text: `workspace ${Hyprland.focusedWorkspace?.name || Hyprland.focusedWorkspace?.id || 1}` }
             Meta { icon: "\u{F009A}"; text: `${Notes.list.length} notifications` }
             Meta { visible: Weather.ok; icon: Weather.glyph(Weather.now?.code ?? 0, Weather.now?.day); text: `${Math.round(Weather.now?.temp ?? 0)}° ${Weather.name(Weather.now?.code)}` }
             Meta { visible: !!root.buds; icon: "\u{F02CB}"; text: `${root.buds?.name ?? ""} · ${Math.round((root.buds?.battery ?? 0) * 100)}%` }
