@@ -1,9 +1,9 @@
 local vars = require("variables")
 local fn   = require("hyprland.functions")
 
--- глобалки шелла — shell:<имя>: их регистрирует тот шелл, что сейчас живой (demonshot, glyph), чего у него нет — молчит
--- Single Super tap opens the running windows overview
-hl.bind("SUPER + SUPER_L", hl.dsp.global("shell:windows"), { release = true })
+-- Shell globals: shell:<name> - registered by the active shell (demonshot, glyph)
+-- Single Super tap toggles runtime application overview (floats & arranges running apps)
+hl.bind("SUPER + SUPER_L", hl.dsp.exec_cmd("/home/marudhu/REPOS/nothing-os-rice/config/hypr/scripts/app_overview.py"), { release = true })
 
 
 -- App Launcher: Super + D
@@ -17,15 +17,15 @@ hl.bind(vars.kbAltar, hl.dsp.global("shell:altar"))
 hl.bind("SUPER + I", hl.dsp.global("shell:settings"))
 hl.bind("SUPER + N", hl.dsp.global("shell:ward"))
 hl.bind("SUPER + P", hl.dsp.global("shell:pact"))
-hl.bind("SUPER + A", hl.dsp.global("shell:quick")) -- быстрые настройки glyph
-hl.bind("SUPER + W", hl.dsp.global("shell:wall")) -- обои glyph
-hl.bind("SUPER + SHIFT + W", hl.dsp.global("shell:wall")) -- обои glyph
+hl.bind("SUPER + A", hl.dsp.global("shell:quick")) -- quick settings
+hl.bind("SUPER + W", hl.dsp.global("shell:wall")) -- wallpapers
+hl.bind("SUPER + SHIFT + W", hl.dsp.global("shell:wall")) -- wallpapers
 hl.bind(vars.kbSession, hl.dsp.global("shell:power"))
 hl.bind(vars.kbPower, hl.dsp.global("shell:power"))
 hl.bind(vars.kbLock, hl.dsp.exec_cmd(vars.lockCmd))
-hl.bind(vars.kbRestoreLock, hl.dsp.exec_cmd(vars.lockCmd), { locked = true }) -- лок упал — поднять заново (сессия ещё заблокирована → нужен locked)
+hl.bind(vars.kbRestoreLock, hl.dsp.exec_cmd(vars.lockCmd), { locked = true }) -- lock screen fallback
 
--- Brightness (OSD рисует шелл)
+-- Brightness (OSD drawn by shell)
 hl.bind("XF86MonBrightnessUp", hl.dsp.exec_cmd("brightnessctl -e4 -n2 set 5%+"), { locked = true, repeating = true })
 hl.bind("XF86MonBrightnessDown", hl.dsp.exec_cmd("brightnessctl -e4 -n2 set 5%-"), { locked = true, repeating = true })
 

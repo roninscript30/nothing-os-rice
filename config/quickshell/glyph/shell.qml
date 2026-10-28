@@ -19,9 +19,9 @@ import "shot"
 import "vpn"
 import "wall"
 
-// glyph: rice в духе nothing os. Дом на обоях, бар, лаунчер, быстрые настройки,
-// Glyph-полосы по краям вместо OSD, остров уведомлений, меню питания, настройки, deck (дашборд снизу), буфер обмена, скриншоты, vpn, обои. Блокировка — отдельный процесс (lock.qml).
-// Переключается с demonshot через `rice switch` / приложение Rice — бинды hypr общие (shell:*), каждый шелл берёт свои
+// glyph: Nothing OS inspired rice. Wallpaper home widgets, bar, launcher, quick settings,
+// Glyph lightbars as OSD, notification island, power menu, settings, bottom deck, clipboard, screenshot, vpn, wallpapers. Lockscreen is a separate process (lock.qml).
+// Can switch via `rice switch` / Rice app - Hyprland binds are shared (shell:*), each shell claims its own
 ShellRoot {
     id: shell
 
@@ -61,8 +61,7 @@ ShellRoot {
         }
     }
 
-    // hypr как у demonshot: его Rules (settings/Rules.qml, тот же ~/.config/demonshot/rules.json) ставит монитор, ввод,
-    // движение, ночник и hypridle; сверху Theme.apply — свои цвета рамок, скругление и kitty. Его же зовём при смене темы
+    // Hyprland rules apply monitor, input, motion, nightlight and hypridle; Theme.apply applies custom border colors, rounding and kitty
     Component.onCompleted: {
         Rules.monitor();
         Rules.input();
@@ -79,7 +78,7 @@ ShellRoot {
         target: Theme.state
         function onRoundingChanged() { Theme.apply(); }
     }
-    // режим ultra включает/снимает blur и тени поверх настроек — окна перекрасить (герцы и движение ставит сам Rules.setMode)
+    // Ultra mode toggles blur and shadows over settings - recolors windows
     Connections {
         target: Rules.store
         function onUltraChanged() { Theme.apply(); }
@@ -92,25 +91,24 @@ ShellRoot {
     }
     Shortcut {
         name: "launcher"
-        description: "лаунчер приложений (Super+D)"
+        description: "Application launcher (Super+D)"
         onPressed: Quickshell.execDetached(["/home/marudhu/.config/rofi/scripts/nothing-launcher.sh"])
     }
     Shortcut {
         name: "help"
-        description: "панель горячих клавиш (Super+H)"
+        description: "Hotkeys cheatsheet (Super+H)"
         onPressed: cheatsheet.toggle()
     }
-    // Super+Space (алтарь у demonshot) — deck, дашборд снизу: лаунчер и так на тапе Super
-    Shortcut { name: "altar"; description: "deck: дашборд снизу"; onPressed: deck.toggle() }
-    Shortcut { name: "quick"; description: "быстрые настройки"; onPressed: quick.toggle() }
-    Shortcut { name: "ward"; description: "быстрые настройки"; onPressed: quick.toggle() } // Super+N у demonshot — те же тумблеры
-    Shortcut { name: "settings"; description: "настройки"; onPressed: prefs.toggle() }
-    Shortcut { name: "power"; description: "меню питания"; onPressed: power.visible ? power.close() : power.open() }
-    Shortcut { name: "shot"; description: "скриншот"; onPressed: shot.open() }
-    Shortcut { name: "pact"; description: "vpn: clash verge"; onPressed: vpn.toggle() }
-    Shortcut { name: "clip"; description: "буфер обмена"; onPressed: clip.toggle() }
-    Shortcut { name: "wall"; description: "обои"; onPressed: walls.toggle() }
-    Shortcut { name: "bar"; description: "боковая панель"; onPressed: shell.barVisible = !shell.barVisible }
+    Shortcut { name: "altar"; description: "Deck dashboard"; onPressed: deck.toggle() }
+    Shortcut { name: "quick"; description: "Quick settings"; onPressed: quick.toggle() }
+    Shortcut { name: "ward"; description: "Quick settings"; onPressed: quick.toggle() }
+    Shortcut { name: "settings"; description: "Preferences"; onPressed: prefs.toggle() }
+    Shortcut { name: "power"; description: "Power menu"; onPressed: power.visible ? power.close() : power.open() }
+    Shortcut { name: "shot"; description: "Screenshot"; onPressed: shot.open() }
+    Shortcut { name: "pact"; description: "VPN: clash verge"; onPressed: vpn.toggle() }
+    Shortcut { name: "clip"; description: "Clipboard"; onPressed: clip.toggle() }
+    Shortcut { name: "wall"; description: "Wallpapers"; onPressed: walls.toggle() }
+    Shortcut { name: "bar"; description: "Side bar"; onPressed: shell.barVisible = !shell.barVisible }
 
     component Shortcut: GlobalShortcut { appid: "shell" }
 }

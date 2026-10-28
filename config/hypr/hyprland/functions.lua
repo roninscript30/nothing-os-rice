@@ -76,7 +76,7 @@ local function move_actions(win)
     end
 end
 
--- special ws: открыть/закрыть, а если там пусто — запустить приложение (замена caelestia toggle)
+-- Special workspace: open/close, or launch app if empty (replaces caelestia toggle)
 local function toggle_special(name, cmd)
     return function()
         if cmd then
@@ -90,7 +90,7 @@ local function toggle_special(name, cmd)
     end
 end
 
--- запись экрана gpu-screen-recorder: тот же бинд ещё раз — стоп
+-- Screen recording with gpu-screen-recorder: same bind again to stop
 local function record(region, sound)
     return function()
         local mon = hl.get_active_monitor()

@@ -7,13 +7,28 @@ import Quickshell.Wayland
 import qs
 import qs.components
 
-// Nothing OS Application Overview: Floats all running windows when pressing Super key
+// Nothing OS Floating Application Overview
+// Displays running application windows floating in space (GNOME 40+ style)
 PanelWindow {
     id: root
 
     property bool open: false
-    function toggle() { open = !open; }
-    function close() { open = false; }
+    property string searchQuery: ""
+    property int selectedWorkspaceFilter: -1 // -1 = current workspace, -2 = all workspaces, >= 0 = specific workspace ID
+
+    function toggle() {
+        if (open) {
+            close();
+        } else {
+            searchQuery = "";
+            open = true;
+        }
+    }
+
+    function close() {
+        open = false;
+        searchQuery = "";
+    }
 
     visible: open
     anchors { left: true; right: true; top: true; bottom: true }
@@ -22,16 +37,48 @@ PanelWindow {
     WlrLayershell.keyboardFocus: open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     WlrLayershell.namespace: "glyph-overview"
 
-    // Gather running windows from Hyprland
-    readonly property var windowList: !open ? [] : Hyprland.toplevels.values.map(t => {
-        const cls = t.lastIpcObject?.class ?? "";
-        const icon = DesktopEntries.heuristicLookup(cls)?.icon ?? "";
-        const ws = t.lastIpcObject?.workspace?.name ?? (t.lastIpcObject?.workspace?.id ?? "");
+    function resolveIcon(icon) {
+        if (!icon) return "";
+        if (icon.startsWith("/") || icon.startsWith("file://")) return icon;
+        return Quickshell.iconPath(icon, true) || "";
+    }
+
+    readonly property var glyphMap: [
+        ["zen", "\u{F0239}"], ["firefox", "\u{F0239}"], ["chrom", "\u{F059F}"], ["edge", "\u{F0239}"],
+        ["kitty", "\u{F018D}"], ["foot", "\u{F018D}"], ["terminal", "\u{F018D}"],
+        ["spotify", "\u{F04C7}"], ["telegram", "\u{F2C6}"], ["codium", "\u{F0A1E}"], ["code", "\u{F0A1E}"],
+        ["antigravity", "\u{F0A1E}"], ["loaf", "\u{F024B}"], ["files", "\u{F024B}"], ["thunar", "\u{F024B}"],
+        ["nautilus", "\u{F024B}"], ["chatgpt", "\u{F059F}"], ["discord", "\u{F066F}"], ["vesktop", "\u{F066F}"],
+        ["settings", "\u{F0493}"]
+    ]
+
+    function getGlyph(key) {
+        const k = (key || "").toLowerCase();
+        const found = glyphMap.find(g => k.includes(g[0]));
+        return found ? found[1] : "\u{F05D7}";
+    }
+
+    // Active workspace ID
+    readonly property int currentWsId: Hyprland.focusedMonitor?.activeWorkspace?.id ?? 1
+
+    // Extract all open toplevel windows from Hyprland
+    readonly property var allWindows: !open ? [] : Hyprland.toplevels.values.map(t => {
+        const ipc = t.lastIpcObject || {};
+        const cls = ipc.class ?? "";
+        const initCls = ipc.initialClass ?? "";
+        const wsId = ipc.workspace?.id ?? 1;
+        const wsName = ipc.workspace?.name ?? String(wsId);
+        const iconName = DesktopEntries.heuristicLookup(cls)?.icon 
+                      || DesktopEntries.heuristicLookup(initCls)?.icon 
+                      || cls.toLowerCase();
+
         return {
             title: t.title || cls || "Window",
             appClass: cls || "Application",
-            workspace: ws ? `Workspace ${ws}` : "",
-            iconName: icon,
+            workspaceId: wsId,
+            workspaceName: wsName,
+            iconPath: root.resolveIcon(iconName),
+            glyphChar: root.getGlyph(cls + " " + (t.title ?? "")),
             address: t.address,
             focus: () => {
                 Hyprland.dispatch(`hl.dsp.focus({ window = "address:${t.address}" })`);
@@ -43,12 +90,47 @@ PanelWindow {
         };
     })
 
-    // Dimmed background with click-to-exit
+    // Filtered window list based on workspace filter and search query
+    readonly property var filteredWindows: {
+        const q = searchQuery.trim().toLowerCase();
+        return allWindows.filter(w => {
+            // Workspace filter
+            if (selectedWorkspaceFilter === -1 && w.workspaceId !== currentWsId) {
+                // If current workspace has no windows and we have windows elsewhere, don't show empty if there are windows
+                if (allWindows.some(x => x.workspaceId === currentWsId)) return false;
+            } else if (selectedWorkspaceFilter >= 0 && w.workspaceId !== selectedWorkspaceFilter) {
+                return false;
+            }
+            // Search query filter
+            if (q) {
+                const haystack = (w.title + " " + w.appClass + " " + w.workspaceName).toLowerCase();
+                return haystack.includes(q);
+            }
+            return true;
+        });
+    }
+
+    // Dynamic sizing based on window count
+    readonly property int winCount: filteredWindows.length
+    readonly property real cardW: {
+        if (winCount <= 1) return 640;
+        if (winCount === 2) return 500;
+        if (winCount <= 4) return 420;
+        return 360;
+    }
+    readonly property real cardH: {
+        if (winCount <= 1) return 400;
+        if (winCount === 2) return 310;
+        if (winCount <= 4) return 260;
+        return 225;
+    }
+
+    // Dimmed dark background with click-outside to dismiss
     Rectangle {
         anchors.fill: parent
-        color: "#000000"
-        opacity: root.open ? 0.78 : 0
-        Behavior on opacity { NumberAnimation { duration: 200 } }
+        color: "#0a0a0a"
+        opacity: root.open ? 0.85 : 0
+        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
 
         MouseArea {
             anchors.fill: parent
@@ -56,6 +138,7 @@ PanelWindow {
         }
     }
 
+    // Main Content
     Item {
         anchors.fill: parent
         focus: true
@@ -64,62 +147,161 @@ PanelWindow {
             if (e.key === Qt.Key_Escape || e.key === Qt.Key_Super_L || e.key === Qt.Key_Super_R) {
                 root.close();
                 e.accepted = true;
+            } else if ((e.key === Qt.Key_Return || e.key === Qt.Key_Enter) && root.filteredWindows.length > 0) {
+                root.filteredWindows[0].focus();
+                e.accepted = true;
             }
         }
 
-        // Header
+        // Top Control Area: Search Bar + Workspace Filters
         Column {
-            anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: 50 }
-            spacing: 8
+            id: topBar
+            anchors {
+                top: parent.top
+                topMargin: 42
+                horizontalCenter: parent.horizontalCenter
+            }
+            spacing: 16
+            z: 100
 
-            Row {
+            // GNOME-style Pill Search Bar
+            Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 12
-
-                Icon {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "\u{F05D7}"
-                    font.pixelSize: 22
-                    color: Theme.red
+                width: 440
+                height: 46
+                radius: 23
+                color: searchInput.activeFocus ? "#1e1e1e" : "#141414"
+                border {
+                    width: searchInput.activeFocus ? 2 : 1
+                    color: searchInput.activeFocus ? "#ffffff" : "#2a2a2a"
                 }
+                Behavior on border.color { ColorAnimation { duration: 150 } }
+                Behavior on color { ColorAnimation { duration: 150 } }
 
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "RUNNING APPS OVERVIEW"
-                    font { family: Theme.ui; pixelSize: 22; weight: Font.Bold; letterSpacing: 2 }
-                    color: Theme.fg
-                }
+                Row {
+                    anchors {
+                        fill: parent
+                        leftMargin: 18
+                        rightMargin: 18
+                    }
+                    spacing: 12
 
-                Rectangle {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: countText.width + 16
-                    height: 24
-                    radius: 12
-                    color: Theme.s2
-                    border { width: 1; color: Theme.s3 }
+                    Icon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "\u{F0349}"
+                        font.pixelSize: 18
+                        color: searchInput.activeFocus ? Theme.fg : Theme.grey
+                    }
 
-                    Text {
-                        id: countText
-                        anchors.centerIn: parent
-                        text: `${root.windowList.length} ACTIVE`
-                        font { family: Theme.ui; pixelSize: 11; weight: Font.Medium }
+                    TextInput {
+                        id: searchInput
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: parent.width - 60
                         color: Theme.fg
+                        font { family: Theme.ui; pixelSize: 14 }
+                        clip: true
+                        selectByMouse: true
+
+                        Text {
+                            anchors.fill: parent
+                            visible: !searchInput.text && !searchInput.activeFocus
+                            text: "Type to search open apps..."
+                            color: Theme.grey
+                            font { family: Theme.ui; pixelSize: 14 }
+                        }
+
+                        onTextChanged: root.searchQuery = text
+
+                        Component.onCompleted: {
+                            if (root.open) forceActiveFocus();
+                        }
+                    }
+
+                    // Clear button
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: !!searchInput.text
+                        width: 20
+                        height: 20
+                        radius: 10
+                        color: Theme.s2
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "\u{00D7}"
+                            font.pixelSize: 14
+                            color: Theme.fg
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                searchInput.text = "";
+                                root.searchQuery = "";
+                            }
+                        }
                     }
                 }
             }
 
-            Text {
+            // Workspace Filter Pills
+            Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Click any window to focus · Esc or Super to exit"
-                font { family: Theme.ui; pixelSize: 13 }
-                color: Theme.grey
+                spacing: 8
+
+                // Current Workspace Pill
+                Rectangle {
+                    width: currentWsLabel.width + 24
+                    height: 28
+                    radius: 14
+                    color: root.selectedWorkspaceFilter === -1 ? "#ffffff" : "#161616"
+                    border { width: 1; color: root.selectedWorkspaceFilter === -1 ? "#ffffff" : "#2a2a2a" }
+
+                    Text {
+                        id: currentWsLabel
+                        anchors.centerIn: parent
+                        text: `Workspace ${root.currentWsId}`
+                        font { family: Theme.ui; pixelSize: 11; weight: Font.Bold }
+                        color: root.selectedWorkspaceFilter === -1 ? "#000000" : Theme.fg
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.selectedWorkspaceFilter = -1
+                    }
+                }
+
+                // All Workspaces Pill
+                Rectangle {
+                    width: allWsLabel.width + 24
+                    height: 28
+                    radius: 14
+                    color: root.selectedWorkspaceFilter === -2 ? "#ffffff" : "#161616"
+                    border { width: 1; color: root.selectedWorkspaceFilter === -2 ? "#ffffff" : "#2a2a2a" }
+
+                    Text {
+                        id: allWsLabel
+                        anchors.centerIn: parent
+                        text: `All (${root.allWindows.length})`
+                        font { family: Theme.ui; pixelSize: 11; weight: Font.Bold }
+                        color: root.selectedWorkspaceFilter === -2 ? "#000000" : Theme.fg
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.selectedWorkspaceFilter = -2
+                    }
+                }
             }
         }
 
         // Empty state
         Column {
             anchors.centerIn: parent
-            visible: root.windowList.length === 0
+            visible: root.filteredWindows.length === 0
             spacing: 16
 
             Icon {
@@ -131,158 +313,258 @@ PanelWindow {
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "No active application windows"
+                text: root.searchQuery ? "No matching application windows" : "No open application windows"
                 font { family: Theme.ui; pixelSize: 18 }
                 color: Theme.grey
             }
         }
 
-        // Window Cards Grid (Floating overview)
-        Flickable {
-            id: scrollArea
+        // Floating Applications Stage (GNOME-Style Floating Cards)
+        Item {
+            id: stageArea
             anchors {
-                left: parent.left
-                right: parent.right
-                top: parent.top
+                top: topBar.bottom
+                topMargin: 36
                 bottom: parent.bottom
-                topMargin: 150
-                bottomMargin: 60
-                leftMargin: 80
-                rightMargin: 80
+                bottomMargin: 50
+                left: parent.left
+                leftMargin: 60
+                right: parent.right
+                rightMargin: 60
             }
-            contentWidth: flowLayout.width
-            contentHeight: flowLayout.height
-            clip: true
+            visible: root.filteredWindows.length > 0
 
-            Flow {
-                id: flowLayout
-                width: scrollArea.width
-                spacing: 24
-                flow: Flow.LeftToRight
+            Flickable {
+                anchors.fill: parent
+                contentWidth: flowGrid.width
+                contentHeight: flowGrid.height
+                clip: false
+                boundsBehavior: Flickable.StopAtBounds
 
-                Repeater {
-                    model: root.windowList
+                Flow {
+                    id: flowGrid
+                    anchors.centerIn: parent
+                    spacing: 36
+                    flow: Flow.LeftToRight
+                    width: {
+                        if (root.winCount === 1) return root.cardW;
+                        if (root.winCount === 2) return root.cardW * 2 + 36;
+                        if (root.winCount <= 4) return root.cardW * 2 + 36;
+                        return Math.min(parent.width, root.cardW * 3 + 72);
+                    }
 
-                    delegate: Rectangle {
-                        id: card
-                        required property var modelData
+                    Repeater {
+                        model: root.filteredWindows
 
-                        width: 320
-                        height: 200
-                        radius: 18
-                        color: cardMouse.containsMouse ? "#1c1c1c" : "#121212"
-                        // Pure white border highlight on hover matching user's border theme
-                        border {
-                            width: cardMouse.containsMouse ? 2 : 1
-                            color: cardMouse.containsMouse ? "#ffffff" : "#2a2a2a"
-                        }
-                        scale: cardMouse.containsMouse ? 1.04 : 1.0
-                        Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
-                        Behavior on color { ColorAnimation { duration: 150 } }
-                        Behavior on border.color { ColorAnimation { duration: 150 } }
+                        delegate: Item {
+                            id: cardWrapper
+                            required property var modelData
 
-                        MouseArea {
-                            id: cardMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: modelData.focus()
-                        }
+                            width: root.cardW
+                            height: root.cardH + 26 // Extra vertical space for the floating bottom icon
 
-                        // Top bar of card
-                        Row {
-                            anchors { left: parent.left; leftMargin: 16; right: closeBtn.left; rightMargin: 8; top: parent.top; topMargin: 16 }
-                            spacing: 12
-
-                            // App Icon
                             Rectangle {
-                                width: 40
-                                height: 40
-                                radius: 20
-                                color: Theme.s2
-                                border { width: 1; color: Theme.s3 }
+                                id: card
+                                width: root.cardW
+                                height: root.cardH
+                                radius: 18
+                                color: cardHover.containsMouse ? "#1c1c1c" : "#131313"
 
-                                Image {
-                                    anchors.centerIn: parent
-                                    width: 24
-                                    height: 24
-                                    source: modelData.iconName ? Quickshell.iconPath(modelData.iconName, true) : ""
-                                    visible: status === Image.Ready
+                                // GNOME active highlight: Pure white border when hovered
+                                border {
+                                    width: cardHover.containsMouse ? 2 : 1
+                                    color: cardHover.containsMouse ? "#ffffff" : "#242424"
                                 }
 
-                                Icon {
-                                    anchors.centerIn: parent
-                                    text: "\u{F05D7}"
-                                    font.pixelSize: 18
-                                    color: Theme.fg
-                                    visible: !modelData.iconName
-                                }
-                            }
+                                scale: cardHover.containsMouse ? 1.03 : 1.0
+                                Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                                Behavior on border.color { ColorAnimation { duration: 150 } }
+                                Behavior on border.width { NumberAnimation { duration: 150 } }
 
-                            Column {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: parent.width - 52
-                                spacing: 2
-
-                                Text {
-                                    text: modelData.appClass.toUpperCase()
-                                    font { family: Theme.ui; pixelSize: 14; weight: Font.Bold }
-                                    color: Theme.fg
-                                    elide: Text.ElideRight
-                                    width: parent.width
+                                MouseArea {
+                                    id: cardHover
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: modelData.focus()
                                 }
 
-                                Text {
-                                    text: modelData.workspace
-                                    font { family: Theme.ui; pixelSize: 11 }
-                                    color: Theme.red
+                                // Window Top Header
+                                Rectangle {
+                                    id: cardHeader
+                                    anchors {
+                                        top: parent.top
+                                        left: parent.left
+                                        right: parent.right
+                                    }
+                                    height: 38
+                                    color: "#181818"
+                                    radius: 18
+
+                                    // Flat bottom corners for header
+                                    Rectangle {
+                                        anchors {
+                                            left: parent.left
+                                            right: parent.right
+                                            bottom: parent.bottom
+                                        }
+                                        height: 12
+                                        color: "#181818"
+                                    }
+
+                                    // Window deco dots (Nothing OS style)
+                                    Row {
+                                        anchors {
+                                            left: parent.left
+                                            leftMargin: 14
+                                            verticalCenter: parent.verticalCenter
+                                        }
+                                        spacing: 6
+
+                                        Rectangle { width: 8; height: 8; radius: 4; color: "#ff5f56" }
+                                        Rectangle { width: 8; height: 8; radius: 4; color: "#ffbd2e" }
+                                        Rectangle { width: 8; height: 8; radius: 4; color: "#27c93f" }
+                                    }
+
+                                    // Window Title
+                                    Text {
+                                        anchors {
+                                            left: parent.left
+                                            leftMargin: 56
+                                            right: headerRightArea.left
+                                            rightMargin: 10
+                                            verticalCenter: parent.verticalCenter
+                                        }
+                                        text: modelData.title
+                                        font { family: Theme.ui; pixelSize: 12; weight: Font.Medium }
+                                        color: cardHover.containsMouse ? "#ffffff" : Theme.fg
+                                        elide: Text.ElideRight
+                                    }
+
+                                    // Header Right: Workspace badge + Close button
+                                    Row {
+                                        id: headerRightArea
+                                        anchors {
+                                            right: parent.right
+                                            rightMargin: 10
+                                            verticalCenter: parent.verticalCenter
+                                        }
+                                        spacing: 8
+
+                                        // Workspace Pill
+                                        Rectangle {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: wsBadgeText.width + 12
+                                            height: 20
+                                            radius: 10
+                                            color: "#222222"
+                                            border { width: 1; color: "#333333" }
+
+                                            Text {
+                                                id: wsBadgeText
+                                                anchors.centerIn: parent
+                                                text: `WS ${modelData.workspaceName}`
+                                                font { family: Theme.ui; pixelSize: 9; weight: Font.Bold }
+                                                color: Theme.red
+                                            }
+                                        }
+
+                                        // Close Button
+                                        Rectangle {
+                                            id: closeBtn
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: 22
+                                            height: 22
+                                            radius: 11
+                                            color: closeHover.containsMouse ? Theme.red : "#222222"
+
+                                            Text {
+                                                anchors.centerIn: parent
+                                                text: "\u{00D7}"
+                                                font { pixelSize: 14; weight: Font.Bold }
+                                                color: closeHover.containsMouse ? "#ffffff" : Theme.grey
+                                            }
+
+                                            MouseArea {
+                                                id: closeHover
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: modelData.closeWin()
+                                            }
+                                        }
+                                    }
                                 }
-                            }
-                        }
 
-                        // Close button on card
-                        Rectangle {
-                            id: closeBtn
-                            anchors { top: parent.top; topMargin: 16; right: parent.right; rightMargin: 16 }
-                            width: 28
-                            height: 28
-                            radius: 14
-                            color: closeMouse.containsMouse ? Theme.red : Theme.s2
-                            border { width: 1; color: closeMouse.containsMouse ? Theme.red : Theme.s3 }
-                            Behavior on color { ColorAnimation { duration: 120 } }
+                                // Window Canvas / Mock Body
+                                Item {
+                                    anchors {
+                                        top: cardHeader.bottom
+                                        bottom: parent.bottom
+                                        left: parent.left
+                                        right: parent.right
+                                        bottomMargin: 24
+                                    }
 
-                            Icon {
-                                anchors.centerIn: parent
-                                text: "\u{F0156}"
-                                font.pixelSize: 12
-                                color: closeMouse.containsMouse ? "#ffffff" : Theme.grey
-                            }
+                                    // Subtle stylized watermark icon
+                                    Icon {
+                                        anchors.centerIn: parent
+                                        text: modelData.glyphChar
+                                        font.pixelSize: 64
+                                        color: "#ffffff"
+                                        opacity: cardHover.containsMouse ? 0.08 : 0.04
+                                        Behavior on opacity { NumberAnimation { duration: 150 } }
+                                    }
 
-                            MouseArea {
-                                id: closeMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: modelData.closeWin()
-                            }
-                        }
+                                    // App class subtitle centered
+                                    Text {
+                                        anchors {
+                                            horizontalCenter: parent.horizontalCenter
+                                            bottom: parent.bottom
+                                            bottomMargin: 8
+                                        }
+                                        text: modelData.appClass.toUpperCase()
+                                        font { family: Theme.ui; pixelSize: 11; weight: Font.Bold; letterSpacing: 1 }
+                                        color: cardHover.containsMouse ? "#ffffff" : Theme.grey
+                                        opacity: 0.6
+                                    }
+                                }
 
-                        // Window Title body
-                        Rectangle {
-                            anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 16 }
-                            height: 90
-                            radius: 10
-                            color: "#0a0a0a"
-                            border { width: 1; color: "#1e1e1e" }
+                                // Signature GNOME Floating App Icon Badge
+                                // Floats at bottom center, half-in and half-out of the window card
+                                Rectangle {
+                                    id: floatingBadge
+                                    anchors {
+                                        horizontalCenter: parent.horizontalCenter
+                                        verticalCenter: parent.bottom
+                                    }
+                                    width: 48
+                                    height: 48
+                                    radius: 24
+                                    color: "#1c1c1c"
+                                    border {
+                                        width: cardHover.containsMouse ? 2 : 1.5
+                                        color: cardHover.containsMouse ? "#ffffff" : "#303030"
+                                    }
+                                    Behavior on border.color { ColorAnimation { duration: 150 } }
 
-                            Text {
-                                anchors { fill: parent; margins: 12 }
-                                text: modelData.title
-                                font { family: Theme.ui; pixelSize: 13 }
-                                color: Theme.fg
-                                wrapMode: Text.Wrap
-                                elide: Text.ElideRight
-                                maximumLineCount: 3
+                                    Image {
+                                        anchors.centerIn: parent
+                                        width: 28
+                                        height: 28
+                                        source: modelData.iconPath
+                                        visible: status === Image.Ready
+                                    }
+
+                                    Icon {
+                                        anchors.centerIn: parent
+                                        text: modelData.glyphChar
+                                        font.pixelSize: 22
+                                        color: Theme.fg
+                                        visible: !modelData.iconPath
+                                    }
+                                }
                             }
                         }
                     }

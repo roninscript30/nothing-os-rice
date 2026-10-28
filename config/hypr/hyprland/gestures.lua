@@ -19,14 +19,14 @@ hl.gesture({
     fingers   = 3,
     direction = "up",
     action    = function()
-        hl.dispatch(hl.dsp.global("shell:windows"))
+        hl.exec_cmd("/home/marudhu/REPOS/nothing-os-rice/config/hypr/scripts/app_overview.py")
     end,
 })
 hl.gesture({
     fingers   = 3,
     direction = "down",
     action    = function()
-        hl.dispatch(hl.dsp.global("shell:windows"))
+        hl.exec_cmd("/home/marudhu/REPOS/nothing-os-rice/config/hypr/scripts/app_overview.py")
     end,
 })
 hl.gesture({
