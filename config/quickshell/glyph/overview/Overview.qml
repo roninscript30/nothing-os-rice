@@ -15,10 +15,11 @@ PanelWindow {
 
     property bool open: false
     property string searchQuery: ""
-    property int selectedWorkspaceId: -1 // -1 = show active workspace, 0 = all workspaces, >0 = specific workspace
-    property int activeSection: 1 // 0: Search, 1: Workspaces, 2: Windows, 3: Launcher
+    // Default to the current working workspace (not ALL)
+    property int selectedWorkspaceId: currentWsId
+    property int selectedWsIndex: currentWsId
+    property int activeSection: 2 // 0: Search, 1: Workspaces, 2: Windows, 3: Launcher
     property int selectedWinIndex: 0
-    property int selectedWsIndex: 0
     property int selectedAppIndex: 0
     property var windowStats: ({})
 
@@ -29,12 +30,22 @@ PanelWindow {
 
     function openOverview() {
         searchQuery = "";
-        selectedWorkspaceId = currentWsId;
+        const ws = currentWsId;
+        selectedWorkspaceId = ws;
+        selectedWsIndex = ws;
         selectedWinIndex = 0;
         selectedAppIndex = 0;
         activeSection = 2; // Default to windows section
         open = true;
         refreshStats();
+    }
+
+    onOpenChanged: {
+        if (open) {
+            const ws = currentWsId;
+            selectedWorkspaceId = ws;
+            selectedWsIndex = ws;
+        }
     }
 
     function close() {
@@ -111,7 +122,7 @@ PanelWindow {
     }
 
     // Active workspace ID from Hyprland
-    readonly property int currentWsId: Hyprland.focusedMonitor?.activeWorkspace?.id ?? 1
+    readonly property int currentWsId: Hyprland.focusedWorkspace?.id ?? (Hyprland.focusedMonitor?.activeWorkspace?.id ?? 1)
 
     // Workspaces model (1 to 5+)
     readonly property var workspaceList: {
@@ -137,8 +148,8 @@ PanelWindow {
         const ipc = t.lastIpcObject || {};
         const cls = ipc.class ?? "";
         const initCls = ipc.initialClass ?? "";
-        const wsId = ipc.workspace?.id ?? 1;
-        const wsName = ipc.workspace?.name ?? String(wsId);
+        const wsId = t.workspace?.id ?? (ipc.workspace?.id ?? 1);
+        const wsName = t.workspace?.name ?? (ipc.workspace?.name ?? String(wsId));
         const iconName = DesktopEntries.heuristicLookup(cls)?.icon 
                       || DesktopEntries.heuristicLookup(initCls)?.icon 
                       || cls.toLowerCase();
@@ -281,6 +292,14 @@ PanelWindow {
                     root.activeSection = (root.activeSection + 1) % 4;
                 }
                 if (root.activeSection === 0) searchInput.forceActiveFocus();
+                e.accepted = true;
+                return;
+            }
+
+            // 0 key: Switch to ALL workspaces view
+            if (e.key === Qt.Key_0) {
+                root.selectedWorkspaceId = 0;
+                root.selectedWsIndex = 0;
                 e.accepted = true;
                 return;
             }
