@@ -2,8 +2,9 @@ local vars = require("variables")
 local fn   = require("hyprland.functions")
 
 -- Shell globals: shell:<name> - registered by the active shell (demonshot, glyph)
--- Running windows overview (Super tap or Super + Tab)
-hl.bind("SUPER + SUPER_L", hl.dsp.global("shell:windows"), { release = true })
+-- Super key alone: runtime application floating overview (matches 3-finger swipe up gesture)
+hl.bind("SUPER + SUPER_L", hl.dsp.exec_cmd("/home/marudhu/REPOS/nothing-os-rice/config/hypr/scripts/app_overview.py"), { release = true })
+-- Super + Tab: full zoomed-out overview with previews and workspace navigator
 hl.bind("SUPER + Tab", hl.dsp.global("shell:windows"))
 
 

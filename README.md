@@ -31,9 +31,10 @@ A custom, high-performance, minimalist Nothing OS (Glyph) desktop environment bu
   - Windows on other workspaces remain completely unaffected.
 
 - **Keyboard Shortcuts**:
-  | Keybind | Action |
+  | Keybind / Gesture | Action |
   | :--- | :--- |
-  | `Super + Tab` / `Super (tap)` | Open Zoomed-Out Overview (running apps & workspaces) |
+  | `Super (tap)` / `3-Finger Swipe Up` | Runtime floating application overview (floats & arranges running apps) |
+  | `Super + Tab` | Zoomed-Out Overview (workspace navigator & previews) |
   | `Super + Q` | Close window under mouse cursor (multi-terminal safe) |
   | `Super + Shift + S` / `Super + Shift + Q` | Safely close all applications on active workspace |
   | `Super + W` | Open wallpaper selector |
