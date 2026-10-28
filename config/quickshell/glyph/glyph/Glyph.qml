@@ -158,6 +158,9 @@ Scope {
                         required property bool crit
                         required property bool leaving
 
+                        property real slideOffset: 0
+                        Behavior on slideOffset { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+
                         // p 0…1 линейно, у каждой фазы своё ease-out-quart (как glide)
                         property real p: 0
                         Component.onCompleted: p = Qt.binding(() => leaving ? 0 : 1)
@@ -170,14 +173,34 @@ Scope {
 
                         width: 600
                         height: (40 + (full - 40) * grow + 12) * drop // место в стопке растёт и схлопывается вместе с плашкой
-                        Timer { running: !c.leaving && !hov.hovered; interval: 4000; onTriggered: root.dismiss(c.key) }
+                        Timer { running: !c.leaving && !hov.hovered; interval: 5000; onTriggered: root.dismiss(c.key) }
+
+                        DragHandler {
+                            id: dragH
+                            target: null
+                            xAxis.enabled: true
+                            yAxis.enabled: false
+                            onTranslationChanged: {
+                                c.slideOffset = translation.x;
+                            }
+                            onActiveChanged: {
+                                if (!active) {
+                                    if (Math.abs(c.slideOffset) > 90) {
+                                        root.dismiss(c.key);
+                                    } else {
+                                        c.slideOffset = 0;
+                                    }
+                                }
+                            }
+                        }
 
                         Rectangle {
+                            id: cardRect
                             width: 140 + (600 - 140) * c.grow
                             height: 40 + (c.full - 40) * c.grow
-                            x: (600 - width) / 2
+                            x: (600 - width) / 2 + c.slideOffset
                             y: -24 * (1 - c.drop)
-                            opacity: c.drop
+                            opacity: c.drop * Math.max(0, 1 - Math.abs(c.slideOffset) / 300)
                             radius: Math.min(34, height / 2)
                             clip: true
                             color: Theme.s1
@@ -213,7 +236,7 @@ Scope {
                                 }
                                 Column {
                                     id: txt
-                                    anchors { left: ic.right; leftMargin: 16; right: dot.left; rightMargin: 16; verticalCenter: parent.verticalCenter }
+                                    anchors { left: ic.right; leftMargin: 16; right: dotContainer.left; rightMargin: 16; verticalCenter: parent.verticalCenter }
                                     Lb { width: parent.width; elide: Text.ElideRight; text: `${c.app} · now` }
                                     Text {
                                         width: parent.width
@@ -235,15 +258,51 @@ Scope {
                                         color: Theme.grey
                                     }
                                 }
-                                // красная точка — только у самой новой: красное на экране одно
-                                Rectangle { id: dot; visible: c.index === 0; anchors { right: parent.right; rightMargin: 22; verticalCenter: parent.verticalCenter } width: 12; height: 12; radius: 6; color: Theme.red }
+
+                                // Красная кнопка закрытия (Clear / Dismiss)
+                                Item {
+                                    id: dotContainer
+                                    anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
+                                    width: 32
+                                    height: 32
+
+                                    Rectangle {
+                                        id: dot
+                                        anchors.centerIn: parent
+                                        width: closeBtnArea.containsMouse ? 24 : 14
+                                        height: width
+                                        radius: width / 2
+                                        color: Theme.red
+                                        Behavior on width { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+
+                                        Icon {
+                                            anchors.centerIn: parent
+                                            text: "\u{F0156}"
+                                            font.pixelSize: 13
+                                            color: "#FFFFFF"
+                                            opacity: closeBtnArea.containsMouse ? 1 : 0
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        id: closeBtnArea
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            root.dismiss(c.key);
+                                        }
+                                    }
+                                }
                             }
 
-                            // клик — действие по умолчанию; плашка уходит, в истории остаётся
+                            // клик по телу карточки — переход в приложение
                             TapHandler {
                                 onTapped: {
-                                    root.refs[c.key]?.actions.find(a => a.identifier === "default")?.invoke();
-                                    root.dismiss(c.key);
+                                    if (Math.abs(c.slideOffset) < 10) {
+                                        root.refs[c.key]?.actions.find(a => a.identifier === "default")?.invoke();
+                                        root.dismiss(c.key);
+                                    }
                                 }
                             }
                         }

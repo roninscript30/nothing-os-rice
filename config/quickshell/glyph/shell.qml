@@ -10,6 +10,7 @@ import "deck"
 import "glyph"
 import "home"
 import "launcher"
+import "overview"
 import "power"
 import "prefs"
 import "quick"
@@ -24,6 +25,7 @@ import "wall"
 ShellRoot {
     id: shell
 
+    Overview { id: overview }
     Launcher { id: launcher }
     Quick { id: quick; onPowerRequested: power.open(); onSettingsRequested: prefs.open() }
     Power { id: power }
@@ -85,8 +87,8 @@ ShellRoot {
 
     Shortcut {
         name: "windows"
-        description: "обзор запущенных окон (тап Super)"
-        onPressed: launcher.toggle(2)
+        description: "Zoom-out overview of running apps (Super tap)"
+        onPressed: overview.toggle()
     }
     Shortcut {
         name: "launcher"
