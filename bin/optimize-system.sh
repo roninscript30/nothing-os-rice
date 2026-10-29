@@ -91,7 +91,7 @@ systemctl enable zramswap.service 2>/dev/null || true
 # -------------------------------------------------------------
 # 4. Kernel memory and responsiveness sysctl settings
 # -------------------------------------------------------------
-echo -e "\033[1;34m[4/4]\033[0m Applying memory responsiveness sysctl settings..."
+echo -e "\033[1;34m[4/5]\033[0m Applying memory responsiveness sysctl settings..."
 
 cat << 'EOF' > /etc/sysctl.d/99-nothing-os-performance.conf
 # Optimize paging priority for zram (compress anonymous memory before thrashing disk)
@@ -104,6 +104,23 @@ vm.dirty_bytes = 268435456
 EOF
 
 sysctl -p /etc/sysctl.d/99-nothing-os-performance.conf >/dev/null 2>&1 || true
+
+# -------------------------------------------------------------
+# 5. Microsoft Edge RAM & Resource Optimization Policy
+# -------------------------------------------------------------
+echo -e "\033[1;34m[5/5]\033[0m Configuring Microsoft Edge Memory Saver & Sleeping Tabs policy..."
+
+mkdir -p /etc/opt/edge/policies/managed
+cat << 'EOF' > /etc/opt/edge/policies/managed/performance.json
+{
+  "SleepingTabsEnabled": true,
+  "SleepingTabsTimeout": 300,
+  "EfficiencyModeEnabled": true,
+  "BackgroundModeEnabled": false,
+  "StartupBoostEnabled": false
+}
+EOF
+chmod 644 /etc/opt/edge/policies/managed/performance.json
 
 echo ""
 echo -e "\033[1;32m✓ Optimization complete!\033[0m"
