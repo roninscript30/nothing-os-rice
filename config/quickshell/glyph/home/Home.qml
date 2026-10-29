@@ -20,7 +20,7 @@ PanelWindow {
     WlrLayershell.namespace: "glyph-home"
 
     readonly property bool home: (Hyprland.focusedWorkspace?.toplevels.values.length ?? 0) === 0
-    Binding { target: SysStats; property: "detailed"; value: root.home || Sys.deckOpen }
+    Binding { target: SysStats; property: "detailed"; value: Sys.deckOpen }
 
     SystemClock { id: clock; precision: SystemClock.Minutes }
     readonly property var en: Qt.locale("en_US")

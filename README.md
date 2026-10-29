@@ -117,6 +117,14 @@ cd ~/REPOS/nothing-os-rice
 hyprctl reload
 ```
 
+### System & Battery Optimization (NVIDIA RTD3, ZRAM & Daemons)
+
+To eliminate the ~10.7W NVIDIA idle drain, speed up app launches with compressed ZRAM swap, and disable redundant daemons:
+
+```bash
+sudo ./bin/optimize-system.sh
+```
+
 ---
 
 ## Upstream & Customizations

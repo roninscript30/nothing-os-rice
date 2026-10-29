@@ -20,7 +20,7 @@ PanelWindow {
 
     readonly property bool home: (Hyprland.focusedWorkspace?.toplevels.values.length ?? 0) === 0
     property real phase: 0
-    Timer { running: root.home && orb.visible; interval: 100; repeat: true; onTriggered: root.phase += 0.1 }
+    Timer { running: root.home && orb.visible; interval: 500; repeat: true; onTriggered: root.phase += 0.5 }
 
     Stage {
         id: stage

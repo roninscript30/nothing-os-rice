@@ -14,9 +14,7 @@ hl.on("hyprland.start", function()
     -- во вложенной сессии системные демоны уже работают снаружи
     if vars.nested then return end
 
-    -- Keyring and auth
-    hl.exec_cmd("gnome-keyring-daemon --start --components=secrets")
-    hl.exec_cmd("thunar --daemon")
+    -- Keyring and auth (gnome-keyring-daemon is managed by systemd --user)
     hl.exec_cmd("/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1")
 
     -- Clipboard history
@@ -33,9 +31,6 @@ hl.on("hyprland.start", function()
 
     -- Location provider
     hl.exec_cmd("/usr/lib/geoclue-2.0/demos/agent")
-
-    -- Forward bluetooth media commands to MPRIS
-    hl.exec_cmd("mpris-proxy")
 
     -- hypridle поднимает шелл (Rules.idle): тайминги из house rules → ~/.config/demonshot/hypridle.conf
 

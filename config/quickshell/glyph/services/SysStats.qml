@@ -62,16 +62,16 @@ Singleton {
     Process {
         running: true
         command: ["sh", "-c", `for h in /sys/class/hwmon/hwmon*; do echo "hwmon $(cat $h/name) $h"; done
-command -v nvidia-smi >/dev/null && nvidia-smi -L >/dev/null 2>&1 && echo nvidia
-for c in /sys/class/drm/card*/device; do [ -e "$c/gpu_busy_percent" ] && { echo "card $c $(ls -d $c/hwmon/hwmon* 2>/dev/null | head -1)"; break; }; done`]
+for c in /sys/class/drm/card*/device; do [ -e "$c/gpu_busy_percent" ] && { echo "card $c $(ls -d $c/hwmon/hwmon* 2>/dev/null | head -1)"; break; }; done
+[ -z "$(ls -d /sys/class/drm/card*/device/gpu_busy_percent 2>/dev/null)" ] && command -v nvidia-smi >/dev/null && echo nvidia`]
         stdout: StdioCollector {
             onStreamFinished: {
                 const m = {};
                 for (const l of text.trim().split("\n")) {
                     const [k, a, b] = l.split(" ");
                     if (k === "hwmon") m[a] = b;
-                    else if (k === "nvidia") root.gpuType = "nvidia";
-                    else if (k === "card" && root.gpuType !== "nvidia") { root.gpuType = "drm"; root.card = a; root.gpuHwmon = b ?? ""; }
+                    else if (k === "card") { root.gpuType = "drm"; root.card = a; root.gpuHwmon = b ?? ""; }
+                    else if (k === "nvidia" && root.gpuType !== "drm") root.gpuType = "nvidia";
                 }
                 root.hwmons = m;
             }
