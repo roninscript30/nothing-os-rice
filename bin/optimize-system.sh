@@ -44,27 +44,37 @@ done
 echo -e "\033[1;34m[2/4]\033[0m Disabling unwanted background daemons..."
 
 # Local Deepseek LLM server (if user wants to start it manually, they can run modelctl)
-if systemctl list-unit-files | grep -q "snap.deepseek-r1.server-webui.service"; then
-    echo "  -> Stopping and disabling snap.deepseek-r1.server-webui.service..."
-    systemctl stop snap.deepseek-r1.server-webui.service 2>/dev/null || true
-    systemctl disable snap.deepseek-r1.server-webui.service 2>/dev/null || true
-fi
+echo "  -> Stopping and disabling snap.deepseek-r1.server-webui.service..."
+systemctl stop snap.deepseek-r1.server-webui.service 2>/dev/null || true
+systemctl disable snap.deepseek-r1.server-webui.service 2>/dev/null || true
 
 # ModemManager (cellular broadband probe; not needed on laptops without cellular SIM cards)
-if systemctl list-unit-files | grep -q "ModemManager.service"; then
-    echo "  -> Stopping and disabling ModemManager.service..."
-    systemctl stop ModemManager.service 2>/dev/null || true
-    systemctl disable ModemManager.service 2>/dev/null || true
-fi
+echo "  -> Stopping and disabling ModemManager.service..."
+systemctl stop ModemManager.service 2>/dev/null || true
+systemctl disable ModemManager.service 2>/dev/null || true
 
 # -------------------------------------------------------------
 # 3. Fast ZRAM compressed memory swap (Eliminates disk swap latency)
 # -------------------------------------------------------------
 echo -e "\033[1;34m[3/4]\033[0m Setting up fast zram compressed in-memory swap..."
 
+wait_for_apt_lock() {
+    local waited=0
+    while fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock >/dev/null 2>&1; do
+        if [ "$waited" -eq 0 ]; then
+            echo "  -> Waiting for background package manager lock to clear..."
+        fi
+        sleep 2
+        waited=$((waited + 2))
+        [ "$waited" -gt 60 ] && break
+    done
+}
+
 if ! dpkg -s zram-tools >/dev/null 2>&1; then
     echo "  -> Installing zram-tools..."
+    wait_for_apt_lock
     DEBIAN_FRONTEND=noninteractive apt-get update -qq
+    wait_for_apt_lock
     DEBIAN_FRONTEND=noninteractive apt-get install -y -qq zram-tools
 fi
 
