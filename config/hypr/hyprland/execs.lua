@@ -9,6 +9,7 @@ hl.on("hyprland.start", function()
 
     -- Shell: тот, что выбран в rice
     hl.exec_cmd(vars.rice .. " start")
+    hl.exec_cmd("sh -c 'sleep 0.1 && " .. vars.rice .. " lock'")
 
     -- во вложенной сессии системные демоны уже работают снаружи
     if vars.nested then return end
