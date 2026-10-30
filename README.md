@@ -40,7 +40,7 @@ A custom, high-performance, minimalist Nothing OS (Glyph) desktop environment bu
   - **Multi-Terminal Safe**: If multiple terminal windows share a single PID (e.g. Kitty in single-instance mode), only the targeted window under the cursor closes. The parent terminal daemon and other open windows remain untouched.
   - Graceful `SIGTERM` $\rightarrow$ 250ms grace $\rightarrow$ `SIGKILL` for solitary application windows.
 
-- **Workspace Cleanup Shortcut (`Super + Shift + S` / `Super + Shift + Q`)**:
+- **Workspace Cleanup Shortcut (`Super + Shift + Q`)**:
   - Safely terminates all client windows belonging exclusively to the currently active workspace.
   - Windows on other workspaces remain completely unaffected.
 
@@ -67,7 +67,8 @@ A custom, high-performance, minimalist Nothing OS (Glyph) desktop environment bu
 | Keybind | Action |
 | :--- | :--- |
 | `Super + Q` | Close window under mouse cursor (multi-terminal safe) |
-| `Super + Shift + S` / `Super + Shift + Q` | Safely close all applications on active workspace |
+| `Super + Shift + Q` | Safely close all applications on active workspace |
+| `Super + Shift + S` / `Super + Print` | Open Nothing OS extensive screenshot & annotation tool |
 | `Super + W` | Open wallpaper selector |
 | `Super + B` | Launch Microsoft Edge browser |
 | `Super + Return` / `Super + T` | Launch Kitty terminal |

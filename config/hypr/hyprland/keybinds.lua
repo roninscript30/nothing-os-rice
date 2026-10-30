@@ -195,7 +195,7 @@ hl.bind("CTRL + ALT + V", hl.dsp.exec_cmd(vars.audioSettings))
 -- Utilities
 hl.bind("Print", hl.dsp.exec_cmd(vars.shotFullCmd))
 hl.bind("SUPER + Print", hl.dsp.global("shell:shot"))
-hl.bind("SUPER + SHIFT + S", hl.dsp.exec_cmd("workspace-kill-clean"))
+hl.bind("SUPER + SHIFT + S", hl.dsp.global("shell:shot"))
 hl.bind("SUPER + ALT + R", fn.record(false, true))
 hl.bind("CTRL + ALT + R", fn.record(false, false))
 hl.bind("SUPER + SHIFT + ALT + R", fn.record(true, false))
