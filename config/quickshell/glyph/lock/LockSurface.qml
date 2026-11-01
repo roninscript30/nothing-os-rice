@@ -39,24 +39,10 @@ WlSessionLockSurface {
     property real wave: 0
     NumberAnimation on wave { running: root.auth.busy; from: 0; to: 1; duration: 700; loops: Animation.Infinite }
 
-    // Таймер авто-входа для 4-5 цифр
-    Timer {
-        id: autoSubmitTimer
-        interval: 350
-        repeat: false
-        onTriggered: {
-            if (root.auth.buffer.length >= 4 && !root.auth.busy && !root.auth.leaving) {
-                root.auth.submit();
-            }
-        }
-    }
-
+    // Авто-вход: отправка строго при наборе 6 символов/цифр
     function checkAutoSubmit() {
-        autoSubmitTimer.stop();
-        if (root.auth.buffer.length >= 6) {
+        if (root.auth.buffer.length === 6 && !root.auth.busy && !root.auth.leaving) {
             root.auth.submit();
-        } else if (root.auth.buffer.length >= 4) {
-            autoSubmitTimer.start();
         }
     }
 
@@ -82,16 +68,13 @@ WlSessionLockSurface {
         }
 
         Keys.onPressed: e => {
-            if (root.auth.leaving) return;
+            if (root.auth.leaving || e.isAutoRepeat) return;
             if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
-                autoSubmitTimer.stop();
                 root.auth.submit();
             } else if (e.key === Qt.Key_Escape) {
-                autoSubmitTimer.stop();
                 root.auth.buffer = "";
                 sessionMenu.visible = false;
             } else if (e.key === Qt.Key_Backspace) {
-                autoSubmitTimer.stop();
                 root.auth.buffer = root.auth.buffer.slice(0, -1);
             } else {
                 var ch = e.text;
@@ -100,7 +83,7 @@ WlSessionLockSurface {
                 } else if (!ch && e.key >= Qt.Key_KP_0 && e.key <= Qt.Key_KP_9) {
                     ch = String.fromCharCode(48 + (e.key - Qt.Key_KP_0));
                 }
-                if (ch && ch.charCodeAt(0) >= 32) {
+                if (ch && ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) <= 126) {
                     root.auth.buffer += ch;
                     root.auth.fail = false;
                     checkAutoSubmit();

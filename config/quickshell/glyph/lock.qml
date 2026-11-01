@@ -37,6 +37,13 @@ ShellRoot {
         }
     }
 
+    Process {
+        id: keyringUnlock
+        stderr: StdioCollector {
+            onStreamFinished: if (text.trim()) console.warn("Keyring unlock error: " + text.trim())
+        }
+    }
+
     PamContext {
         id: pam
         config: "lock"
@@ -44,13 +51,16 @@ ShellRoot {
         onResponseRequiredChanged: if (responseRequired) respond(gate.buffer)
         onCompleted: res => {
             pamWatchdog.stop();
-            gate.buffer = "";
             if (res === PamResult.Success) {
+                if (gate.buffer.length > 0) {
+                    keyringUnlock.exec(["/home/marudhu/REPOS/nothing-os-rice/bin/unlock-keyring.py", gate.buffer]);
+                }
                 gate.leaving = true;
                 unlockT.start();
             } else {
                 gate.fail = true;
             }
+            gate.buffer = "";
         }
     }
     Timer { id: unlockT; interval: 470; onTriggered: lock.locked = false }

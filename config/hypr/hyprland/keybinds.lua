@@ -174,15 +174,11 @@ hl.bind(vars.kbWindowFullscreen, hl.dsp.window.fullscreen({ mode = "fullscreen" 
 hl.bind(vars.kbWindowBorderedFullscreen, hl.dsp.window.fullscreen({ mode = "maximized" }))
 hl.bind(vars.kbToggleWindowFloating, hl.dsp.window.float())
 hl.bind(vars.kbCloseWindow, hl.dsp.exec_cmd("app-kill-clean"))
-hl.bind("SUPER + C", hl.dsp.exec_cmd("app-kill-clean"))
 hl.bind("SUPER + SHIFT + Q", hl.dsp.exec_cmd("workspace-kill-clean"))
 
 -- Special workspace toggles
 hl.bind(vars.kbSpecialWs, fn.toggle_special("special"))
 hl.bind(vars.kbSystemMonitorWs, fn.toggle_special("sysmon", "kitty --class btop -T btop btop"))
-hl.bind(vars.kbMusicWs, fn.toggle_special("music", "spicetify watch -s"))
-hl.bind(vars.kbCommunicationWs, fn.toggle_special("communication", "Telegram"))
-hl.bind(vars.kbTodoWs, fn.toggle_special("todo", "flatpak run io.github.alainm23.planify"))
 
 -- Apps
 hl.bind(vars.kbTerminal, hl.dsp.exec_cmd(vars.terminal))
@@ -224,9 +220,9 @@ hl.bind(
 -- Sleep
 hl.bind("SUPER + SHIFT + L", hl.dsp.exec_cmd(vars.sleepGestureCmd), { locked = true })
 
--- Clipboard
+-- Clipboard & Emoji
 hl.bind("SUPER + V", hl.dsp.global("shell:clip"))
-hl.bind("SUPER + Period", hl.dsp.global("shell:charms"))
+hl.bind("SUPER + Period", hl.dsp.exec_cmd("/home/marudhu/.config/hypr/scripts/RofiEmoji.sh"))
 hl.bind(
     "CTRL + SHIFT + ALT + V",
     hl.dsp.exec_cmd('sleep 0.5s && ydotool type -d 1 "$(cliphist list | head -1 | cliphist decode)"'),

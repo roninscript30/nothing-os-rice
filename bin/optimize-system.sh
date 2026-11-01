@@ -29,14 +29,23 @@ systemctl stop nvidia-persistenced.service 2>/dev/null || true
 systemctl disable nvidia-persistenced.service 2>/dev/null || true
 systemctl mask nvidia-persistenced.service 2>/dev/null || true
 
-# Set runtime PM control to auto for all NVIDIA PCI devices
+# Set runtime PM control to auto for all NVIDIA PCI devices and their upstream PCIe bridges
 for dev in /sys/bus/pci/devices/*; do
     if [ -f "$dev/vendor" ] && [ "$(cat "$dev/vendor")" = "0x10de" ]; then
         if [ -f "$dev/power/control" ]; then
             echo auto > "$dev/power/control" 2>/dev/null || true
         fi
+        if [ -f "$dev/../power/control" ]; then
+            echo auto > "$dev/../power/control" 2>/dev/null || true
+        fi
     fi
 done
+
+cat << 'EOF' > /etc/udev/rules.d/80-nvidia-pm.rules
+# Enable runtime PM for NVIDIA dGPU and upstream PCIe bridge
+ACTION=="add", SUBSYSTEM=="pci", ATTR{vendor}=="0x10de", ATTR{power/control}="auto"
+ACTION=="add", SUBSYSTEM=="pci", ATTR{vendor}=="0x10de", ATTR{../power/control}="auto"
+EOF
 
 # -------------------------------------------------------------
 # 2. Disable unnecessary background daemons

@@ -11,6 +11,7 @@ import os
 import glob
 import json
 import subprocess
+import concurrent.futures
 
 def clean_previews():
     for f in glob.glob("/tmp/qs-preview-*.png"):
@@ -47,6 +48,36 @@ def collect(metrics_only=False):
         except Exception:
             pass
 
+    # Parallel thumbnail capture
+    if not metrics_only:
+        capture_tasks = []
+        for c in clients:
+            addr = c.get("address", "")
+            if not addr:
+                continue
+            ws = c.get("workspace", {}).get("id", 1)
+            size = c.get("size", [0, 0])
+            at = c.get("at", [0, 0])
+            preview_file = f"/tmp/qs-preview-{addr}.png"
+            if ws == active_ws and c.get("mapped") and size[0] > 10 and size[1] > 10 and not os.path.exists(preview_file):
+                capture_tasks.append((preview_file, at, size))
+
+        if capture_tasks:
+            def _capture(task):
+                dst, at, size = task
+                try:
+                    subprocess.run(
+                        ["grim", "-s", "0.25", "-t", "png", "-l", "1", "-g", f"{at[0]},{at[1]} {size[0]}x{size[1]}", dst],
+                        timeout=0.15,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL
+                    )
+                except Exception:
+                    pass
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(capture_tasks))) as executor:
+                list(executor.map(_capture, capture_tasks))
+
     stats = {}
     for c in clients:
         addr = c.get("address", "")
@@ -82,22 +113,6 @@ def collect(metrics_only=False):
             status += " (Pin)"
 
         preview_file = f"/tmp/qs-preview-{addr}.png"
-        at = c.get("at", [0, 0])
-        size = c.get("size", [0, 0])
-
-        # Only capture thumbnail if not in metrics_only mode and thumbnail doesn't exist yet
-        if not metrics_only and ws == active_ws and c.get("mapped") and size[0] > 10 and size[1] > 10:
-            if not os.path.exists(preview_file):
-                try:
-                    subprocess.run(
-                        ["grim", "-s", "0.25", "-t", "png", "-l", "1", "-g", f"{at[0]},{at[1]} {size[0]}x{size[1]}", preview_file],
-                        timeout=0.3,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL
-                    )
-                except Exception:
-                    pass
-
         has_preview = os.path.exists(preview_file)
         stats[addr] = {
             "cpu": cpu_str,
